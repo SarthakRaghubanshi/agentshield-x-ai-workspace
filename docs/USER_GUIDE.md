@@ -46,8 +46,9 @@ and the number of tools.
    reason (missing API key, Ollama not running, model not pulled). *Other LiteLLM model string…*
    lets you type any [LiteLLM model name](https://docs.litellm.ai/docs/providers), e.g.
    `groq/llama-3.1-8b-instant`.
-2. **Task**: pick a benign or attack task. Its label, category, prompt and description appear
-   below. *Custom prompt…* lets you type your own prompt (logged with label `manual`).
+2. **Task**: the console opens on *Chat / custom prompt…*: type a message and click **Send** to
+   talk to the agent (logged with label `manual`), then keep going with **Follow up**. Or pick a
+   benign or attack task; its label, category, prompt and description appear below.
 3. **Repeats**: how many times to run it (1–50).
 4. **Run task** starts it and switches the live view to the first run.
 5. **Batch** buttons run **All tasks**, only **Benign** or only **Attacks** with the selected

@@ -190,3 +190,27 @@ async def test_task_files_cover_all_srs_attack_categories(ws):
 
     attack_categories = {t["category"] for t in ws.tasks.values() if t["label"] == "attack"}
     assert attack_categories == set(CATEGORIES) - {"benign"}
+
+
+# ---- NFR-5: disabled extension points add negligible latency ---------------------------
+async def test_disabled_hooks_overhead_is_negligible():
+    import time
+
+    manager = build_manager(workspace_config())  # all points off
+    n = 20000
+    start = time.perf_counter()
+    for _ in range(n):
+        await manager.dispatch("before_tool", {"name": "x"}, ctx())
+    per_call_us = (time.perf_counter() - start) / n * 1e6
+    assert per_call_us < 20, f"{per_call_us:.2f} µs per disabled hook call"
+
+
+# ---- FR-24: task files may be JSON as well as YAML ------------------------------------
+async def test_json_task_files(tmp_path):
+    from aiworkspace.tasks import load_task_file
+
+    path = tmp_path / "t.json"
+    path.write_text(json.dumps([{"id": "j1", "label": "benign", "prompt": "hi"},
+                                {"id": "j2", "label": "attack", "category": "tool_misuse", "prompt": "x"}]))
+    tasks = load_task_file(path)
+    assert [t["id"] for t in tasks] == ["j1", "j2"] and tasks[1]["category"] == "tool_misuse"

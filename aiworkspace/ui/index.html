@@ -85,8 +85,8 @@ tbody tr { cursor: pointer; } tbody tr:hover { background: var(--bg); }
       <select id="task"></select>
       <div id="taskinfo" class="hint"></div>
       <div id="promptwrap" hidden>
-        <label for="prompt">Prompt</label>
-        <textarea id="prompt" placeholder="e.g. Summarise report.pdf in three bullet points"></textarea>
+        <label for="prompt">Message to the agent</label>
+        <textarea id="prompt" placeholder="Talk to the agent, e.g. Summarise report.pdf in three bullet points"></textarea>
       </div>
       <label for="repeats">Repeats</label>
       <input id="repeats" type="number" min="1" max="50" value="1">
@@ -161,9 +161,9 @@ async function init() {
   tasks = Object.fromEntries(taskList.map(t => [t.id, t]));
   const groups = { benign: [], attack: [] };
   taskList.forEach(t => (groups[t.label] || (groups[t.label] = [])).push(t));
-  $("#task").innerHTML = `<option value="__manual">Custom prompt…</option>` + Object.entries(groups).map(([label, ts]) =>
+  $("#task").innerHTML = `<option value="__manual">Chat / custom prompt…</option>` + Object.entries(groups).map(([label, ts]) =>
     `<optgroup label="${esc(label)}">${ts.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("")}</optgroup>`).join("");
-  $("#task").value = taskList[0]?.id || "__manual";
+  $("#task").value = "__manual";   // open in chat mode; pick a task from the list to run tests
   showTask(); renderHooks(hooks); loadRuns();
 }
 
@@ -173,6 +173,7 @@ const selectedModel = () => $("#model").value === "__custom" ? $("#custommodel")
 function showTask() {
   const id = $("#task").value, manual = id === "__manual";
   $("#promptwrap").hidden = !manual;
+  $("#runbtn").textContent = manual ? "Send" : "Run task";
   if (manual) { $("#taskinfo").innerHTML = ""; return; }
   const t = tasks[id];
   $("#taskinfo").innerHTML = `<span class="chip ${esc(t.label)}">${esc(t.label)}</span> ${catChip(t.label, t.category)}

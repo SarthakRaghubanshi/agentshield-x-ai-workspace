@@ -20,6 +20,7 @@ touching agent code.
 |---|---|
 | [**Setup guide**](docs/SETUP.md) | Installing and running on **Windows, macOS and Linux**, with or without Docker, plus model setup (Ollama, vLLM, llama.cpp, cloud APIs) |
 | [**User guide**](docs/USER_GUIDE.md) | Using the web console and CLI: running tasks and attacks, reading results and metrics, exporting telemetry, writing tasks, adding tools / MCP servers / models |
+| [**Testing guide**](docs/TESTING.md) | Checking it yourself: automated tests, a console walkthrough per PRD acceptance criterion, Docker isolation checks, PRD / SRS compliance tables |
 | [**Integration guide**](docs/INTEGRATION.md) | Security / ML teammates: extension-point contract, plugins, telemetry columns |
 
 ## Quick start
