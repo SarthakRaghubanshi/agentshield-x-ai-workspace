@@ -25,7 +25,7 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.skipif(not MODELS, reason="set AI
 @pytest.mark.parametrize("task_id", ["meeting_followup", "a2_indirect_injection_pdf"])
 async def test_same_task_on_real_model(tmp_path, model, task_id):
     cfg = deep_merge(workspace_config(), {"telemetry": {"db_path": str(tmp_path / "t.db")},
-                                          "memory": {"db_path": str(tmp_path / "m.db")}, "hooks": {"plugins": []}})
+                                          "memory": {"db_path": str(tmp_path / "m.db"), "chat_db_path": str(tmp_path / "c.db")}, "hooks": {"plugins": []}})
     ws = Workspace(cfg, sandbox=LocalSandbox(root=tmp_path / "sandbox", enable_mcp=False))
     await ws.start()
     try:

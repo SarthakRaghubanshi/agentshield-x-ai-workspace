@@ -21,7 +21,7 @@ pytestmark = pytest.mark.asyncio
 def make_cfg(tmp_path, **override):
     return deep_merge(workspace_config(), deep_merge({
         "telemetry": {"db_path": str(tmp_path / "telemetry.db")},
-        "memory": {"db_path": str(tmp_path / "memory.db")},
+        "memory": {"db_path": str(tmp_path / "memory.db"), "chat_db_path": str(tmp_path / "chat_memory.db")},
         "hooks": {"plugins": []},
     }, override))
 

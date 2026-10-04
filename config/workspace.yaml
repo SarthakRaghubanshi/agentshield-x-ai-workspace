@@ -53,7 +53,11 @@ sandbox:
   mcp_config: config/mcp_servers.yaml
 
 memory:
-  reset_between_runs: true             # long-term memory wiped per run unless a task seeds it
+  # Task runs (Experiments, batches) use their own long-term memory, wiped before every run.
+  # Chats and typed prompts use a separate persistent memory that task runs never touch.
+  reset_between_runs: true
+  db_path: runtime/memory.db           # experiments memory
+  chat_db_path: runtime/chat_memory.db # chat memory + all conversations
   recall_top_k: 3                      # memories injected into the system prompt at task start
 
 telemetry:

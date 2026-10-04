@@ -98,11 +98,11 @@ class ToolGateway:
             # writing (raw provenance data for the security layer; nothing is decided here).
             seen = sorted({t["provenance_source"] for t in context.trace
                            if t.get("event_type") in ("tool_result", "memory_read") and t.get("provenance_source")})
-            result = await self.memory.write_memory(content, source="tool_output", ctx=context,
+            result = await (context.memory or self.memory).write_memory(content, source="tool_output", ctx=context,
                                                     metadata={"context_sources": seen})
             return ("Saved to long-term memory." if result["stored"] else f"Memory write not stored: {result.get('reason')}"), result["stored"]
         if name == "recall":
-            hits = self.memory.search(str(args.get("query", "")), k=5)
+            hits = (context.memory or self.memory).search(str(args.get("query", "")), k=5)
             context.log("memory_read", resource_accessed="long_term_memory", provenance_source="memory",
                         trust_level=context.trust("memory"), outcome="success", content=f"{len(hits)} memories")
             return ("\n".join(f"- {h['content']} (source: {h['source']})" for h in hits) or "No memories."), True

@@ -271,11 +271,18 @@ When the workspace runs in Docker, put the same URLs in `DOCKER_VLLM_API_BASE` /
 
 ## Cloud API keys
 
-| Provider | Variable in `.env` | Get a key |
-|---|---|---|
-| Google Gemini (has a free tier) | `GEMINI_API_KEY` | <https://aistudio.google.com/apikey> |
-| OpenAI | `OPENAI_API_KEY` | <https://platform.openai.com/api-keys> |
-| Anthropic | `ANTHROPIC_API_KEY` | <https://console.anthropic.com/settings/keys> |
+| Provider | Variable in `.env` | Models in the console | Get a key |
+|---|---|---|---|
+| Google Gemini (free tier) | `GEMINI_API_KEY` | Gemini 2.5 Flash, Flash-Lite | <https://aistudio.google.com/apikey> |
+| Groq (free tier, very fast) | `GROQ_API_KEY` | gpt-oss-20b | <https://console.groq.com/keys> |
+| OpenAI | `OPENAI_API_KEY` | GPT-4.1 mini | <https://platform.openai.com/api-keys> |
+| Anthropic | `ANTHROPIC_API_KEY` | Claude Haiku 4.5 | <https://console.anthropic.com/settings/keys> |
+| OpenRouter (one key, many providers) | `OPENROUTER_API_KEY` | Llama 3.3 70B | <https://openrouter.ai/keys> |
+| Mistral | `MISTRAL_API_KEY` | Mistral Small | <https://console.mistral.ai/api-keys> |
+
+Any other [LiteLLM provider](https://docs.litellm.ai/docs/providers) works the same way: set its
+key in `.env` and pick *Other LiteLLM model string* in the console (or add an entry to
+`config/models.yaml`). The fastest free way to try an online model is a Gemini or Groq key.
 
 Restart the server after editing `.env`. Total paid spend per process is capped by
 `budget.max_usd` in `config/workspace.yaml` (default USD 2).

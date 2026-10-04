@@ -53,19 +53,40 @@ models:
     api_key: none
     kind: local
 
-  # --- Cloud models via API keys (FR-1; optional, budget-capped) ---
+  # --- Cloud / online models via API keys (FR-1; optional, budget-capped) ---
+  # Put the key in .env (see .env.example); the model becomes selectable after a restart.
   - id: gemini-flash
-    label: "Gemini 2.5 Flash"
+    label: "Gemini 2.5 Flash (free tier available)"
     model: gemini/gemini-2.5-flash
     requires_env: GEMINI_API_KEY
     kind: cloud
-  - id: gpt-4o-mini
-    label: "OpenAI GPT-4o mini"
-    model: openai/gpt-4o-mini
+  - id: gemini-flash-lite
+    label: "Gemini 2.5 Flash-Lite (cheapest)"
+    model: gemini/gemini-2.5-flash-lite
+    requires_env: GEMINI_API_KEY
+    kind: cloud
+  - id: groq-gpt-oss-20b
+    label: "Groq: gpt-oss-20b (free tier, very fast)"
+    model: groq/openai/gpt-oss-20b
+    requires_env: GROQ_API_KEY
+    kind: cloud
+  - id: openai-gpt-4.1-mini
+    label: "OpenAI GPT-4.1 mini"
+    model: openai/gpt-4.1-mini
     requires_env: OPENAI_API_KEY
     kind: cloud
   - id: claude-haiku
     label: "Anthropic Claude Haiku 4.5"
     model: anthropic/claude-haiku-4-5-20251001
     requires_env: ANTHROPIC_API_KEY
+    kind: cloud
+  - id: openrouter-llama-3.3-70b
+    label: "OpenRouter: Llama 3.3 70B (one key, many models)"
+    model: openrouter/meta-llama/llama-3.3-70b-instruct
+    requires_env: OPENROUTER_API_KEY
+    kind: cloud
+  - id: mistral-small
+    label: "Mistral Small"
+    model: mistral/mistral-small-latest
+    requires_env: MISTRAL_API_KEY
     kind: cloud

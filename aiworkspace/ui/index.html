@@ -198,7 +198,7 @@ tbody tr[data-run] { cursor: pointer; } tbody tr[data-run]:hover { background: v
   <section>
     <div class="panel">
       <h2>Run a task</h2>
-      <div class="hint">Benign tasks and attack scenarios from <span class="mono">tasks/</span>. Each run starts from a clean sandbox and empty long-term memory, so it also clears notes saved in Chat.</div>
+      <div class="hint">Benign tasks and attack scenarios from <span class="mono">tasks/</span>. Each run starts from a clean sandbox and its own empty memory, so results are reproducible. Chat memory is not touched.</div>
       <label for="task">Task</label>
       <select id="task"></select>
       <div id="taskinfo" class="hint" style="margin-top:8px"></div>
@@ -227,7 +227,7 @@ tbody tr[data-run] { cursor: pointer; } tbody tr[data-run]:hover { background: v
         <a href="/api/export?fmt=json&table=events"><button>Events JSON</button></a>
         <a href="/api/export?fmt=csv&table=runs"><button>Runs CSV</button></a>
       </div>
-      <div class="row" style="margin-top:8px"><button id="resetbtn">Reset sandbox and memory</button></div>
+      <div class="row" style="margin-top:8px"><button id="resetbtn">Reset sandbox</button></div>
     </div>
   </section>
 
@@ -401,7 +401,7 @@ async function send() {
   addUser(text); const el = addAgent(); const events = [];
   const finish = () => { busy = false; $("#send").disabled = false; $("#input").focus(); loadSessions(); loadMemory(); };
   try {
-    const r = await post("/api/runs", { prompt: text, model, session_id: session, keep_memory: true });
+    const r = await post("/api/runs", { prompt: text, model, session_id: session });
     stream(r.run_ids[0], {
       event(e) {
         events.push(e);
@@ -559,7 +559,7 @@ async function loadRuns() {
 }
 $("#runbtn").onclick = runTask;
 document.querySelectorAll("[data-batch]").forEach(b => b.onclick = () => startBatch(b.dataset.batch));
-$("#resetbtn").onclick = async () => { const r = await post("/api/sandbox/reset", {}); $("#batchmsg").textContent = `Sandbox and memory reset (#${r.count}).`; loadMemory(); };
+$("#resetbtn").onclick = async () => { const r = await post("/api/sandbox/reset", {}); $("#batchmsg").textContent = `Sandbox reset (#${r.count}).`; };
 document.querySelectorAll("[data-sub]").forEach(b => b.onclick = () => {
   document.querySelectorAll("[data-sub]").forEach(x => x.classList.toggle("active", x === b));
   $("#sub-runs").hidden = b.dataset.sub !== "runs"; $("#sub-summary").hidden = b.dataset.sub !== "summary";

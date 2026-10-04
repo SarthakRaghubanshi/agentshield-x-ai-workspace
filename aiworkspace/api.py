@@ -111,7 +111,6 @@ class RunRequest(BaseModel):
     model: str | None = None
     repeats: int = 1
     session_id: str | None = None      # continue an earlier conversation (follow-up turn)
-    keep_memory: bool = False          # new conversation: clean sandbox, but keep long-term memory
 
 
 @app.post("/api/runs")
@@ -129,8 +128,7 @@ async def start_run(req: RunRequest):
     async def go():
         for i, run_id in enumerate(run_ids):
             await _safe(ws.run(task_id=req.task_id, prompt=req.prompt, model=req.model,
-                               repeat_index=i, batch_id=batch_id, run_id=run_id, session_id=req.session_id,
-                               keep_memory=req.keep_memory))
+                               repeat_index=i, batch_id=batch_id, run_id=run_id, session_id=req.session_id))
 
     _spawn(go())
     return {"run_ids": run_ids, "batch_id": batch_id}
@@ -215,7 +213,7 @@ async def session(session_id: str, events: bool = False):
                   key=lambda r: r["started_at"] or "")
     if events:
         runs = [r | {"events": ws.telemetry.events(r["run_id"])} for r in runs]
-    return {"session_id": session_id, "messages": ws.memory.conversations.get(session_id), "runs": runs}
+    return {"session_id": session_id, "messages": ws.conversations.get(session_id), "runs": runs}
 
 
 # ---- human review (hooks.review_behaviour: human) ----------------------------------------
@@ -277,15 +275,16 @@ async def sandbox_state():
 
 
 @app.get("/api/memory")
-async def memory():
-    return ws.memory.all()
+async def memory(scope: str = Query("chat", pattern="^(chat|experiments)$")):
+    """Long-term memory: the persistent chat memory, or the experiments memory of the last task run."""
+    return (ws.chat_memory if scope == "chat" else ws.memory).all()
 
 
 @app.delete("/api/memory")
 async def clear_memory():
-    """Forget all long-term memory (the chat screen's "Clear memory")."""
+    """Forget the chat's long-term memory (the chat screen's "Clear")."""
     async with ws._lock:
-        ws.memory.reset()
+        ws.chat_memory.reset()
     return {"cleared": True}
 
 

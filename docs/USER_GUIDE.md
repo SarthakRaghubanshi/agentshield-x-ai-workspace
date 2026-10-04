@@ -54,7 +54,8 @@ The default screen works like a messaging app:
   security layer is attached, the decision (a blocked step is marked red).
 * Keep typing to continue the conversation: the agent remembers everything earlier in the chat.
 * **New chat** starts a fresh conversation on a clean sandbox. Long-term memory (things the
-  agent saved with its `remember` tool) carries over between chats. The counter at the bottom of
+  agent saved with its `remember` tool) carries over between chats and is kept apart from the
+  experiments, so running tasks never erases it. The counter at the bottom of
   the sidebar shows how many notes it has, and **Clear** forgets them.
 * **Recent chats** in the sidebar reopens any earlier conversation, steps included.
 * If a guard asks for human review (see below), an **Approval needed** card appears inside the
@@ -68,8 +69,8 @@ The second screen is for the evaluation work:
 
 * **Run a task**: pick a benign task or an attack scenario. Its label, category, prompt and
   description show below. Set **Repeats** (1 to 50; LLM output varies, PRD FR-27) and click
-  **Run task**. Every task run starts from a clean sandbox and empty long-term memory (for
-  reproducible experiments), which also clears notes the agent saved during chats.
+  **Run task**. Every task run starts from a clean sandbox and its own empty long-term memory
+  (reproducible experiments). The chat's memory is separate and is never touched by task runs.
 * **Run a whole suite**: **All tasks**, **Benign** or **Attacks** with the selected model and repeats.
   Progress shows underneath. Results fill **Past runs** and **Metrics**.
 * **Extension points**: one switch per point, with the handlers registered on it. Switching a
@@ -81,7 +82,7 @@ The second screen is for the evaluation work:
   (asks before every outgoing email). Switches here last until the server restarts. Use
   `hooks.enabled` in `config/workspace.yaml` to make them permanent.
 * **Telemetry**: **Events CSV / JSON** (every logged event) and **Runs CSV** (one row per run
-  with the verdicts). **Reset sandbox and memory** restores the pristine sandbox.
+  with the verdicts). **Reset sandbox** restores the pristine sandbox.
 * **Run details**: every event of the selected run, live while it happens:
 
   | Card | Meaning |

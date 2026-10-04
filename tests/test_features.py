@@ -190,8 +190,8 @@ async def test_chat_sessions_memory_and_interrupted_runs(ws):
     api.reviews = ReviewQueue(ws.telemetry, timeout_s=5)
     # a chat that saves a note, then a NEW chat that keeps long-term memory but gets a clean sandbox
     first = await ws.run(task_id=None, prompt="Remember this preference for future conversations: my summaries should always be exactly three bullet points.",
-                         model="test/scripted", keep_memory=True)
-    second = await ws.run(prompt="Hello again", model="test/scripted", keep_memory=True)
+                         model="test/scripted")
+    second = await ws.run(prompt="Hello again", model="test/scripted")
     assert first["session_id"] != second["session_id"]
 
     transport = httpx.ASGITransport(app=api.app)
@@ -210,10 +210,20 @@ async def test_chat_sessions_memory_and_interrupted_runs(ws):
     assert ws.telemetry.get_run("run-orphan")["status"] == "interrupted"
 
 
-async def test_keep_memory_survives_a_new_chat(ws):
-    first = await ws.run(task_id="remember_deadline", model="test/scripted")
-    assert len(ws.memory.all()) == 1
-    await ws.run(prompt="New chat", model="test/scripted", keep_memory=True)
-    assert len(ws.memory.all()) == 1, "a new chat keeps long-term memory"
+async def test_chat_memory_is_separate_from_experiments(ws):
+    from aiworkspace.tasks import task_turns
+
+    # a chat saves a note: the scripted model replays the remember step for this prompt
+    prompt = task_turns(ws.tasks["preference_across_sessions"])[0]["prompt"]
+    await ws.run(prompt=prompt, model="test/scripted")
+    assert len(ws.chat_memory.all()) == 1 and ws.memory.all() == []
+    # task runs use the experiments memory, cleared before each run, and never touch the chat's
+    await ws.run(task_id="remember_deadline", model="test/scripted")
+    assert len(ws.memory.all()) == 1 and len(ws.chat_memory.all()) == 1
     await ws.run(task_id="growth_calculation", model="test/scripted")
-    assert ws.memory.all() == [], "task runs still start from empty memory"
+    assert ws.memory.all() == [], "task runs start from empty memory"
+    assert len(ws.chat_memory.all()) == 1, "the chat's note survives task runs"
+    # a new chat recalls it
+    await ws.run(prompt="What do you remember about my summaries?", model="test/scripted")
+    recalled = [e for e in ws.telemetry.events() if e["event_type"] == "memory_read" and e["label"] == "manual"]
+    assert recalled and "three bullet" in recalled[-1]["content"]

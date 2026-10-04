@@ -103,7 +103,8 @@ class Agent:
 
         # Long-term memory recalled into the context -> before_input (source=memory)
         memories = []
-        for mem in self.memory.search(prompt, k=self.recall_top_k) if self.recall_top_k else []:
+        memory = ctx.memory or self.memory
+        for mem in memory.search(prompt, k=self.recall_top_k) if self.recall_top_k else []:
             mem_screen = await before_input(mem["content"], ctx.hook_ctx("memory", extra={"memory_id": mem["id"]}), ctx.hooks)
             ctx.log("memory_read", hook=mem_screen, guard_column="input_guard_result", resource_accessed="long_term_memory",
                     provenance_source=mem["source"], trust_level=mem["trust_level"], content=mem["content"],

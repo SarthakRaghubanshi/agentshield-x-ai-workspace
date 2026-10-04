@@ -22,6 +22,7 @@ class RunContext:
     task: dict = field(default_factory=dict)
     step: int = 0
     turn: int = 1
+    memory: Any = None   # the LongTermMemory this run reads/writes (chat vs experiments)
     session_id: str | None = None
     trace: list = field(default_factory=list)
 

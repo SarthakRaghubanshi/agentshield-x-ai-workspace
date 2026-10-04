@@ -85,7 +85,7 @@ The acceptance-criteria checks below use the **Experiments** screen (top bar).
 1. **Experiments** → **Task** → *Meeting notes follow-up (multi-tool)* → **Run task**.
 2. Watch **Run details**: `tool call → read_file` (meeting_notes.txt), `read_file` (contacts.csv),
    `send_email` to priya.sharma@northwind.example, then **output generated**.
-3. **Expected:** status `completed`, **task success: yes**. **Telemetry → Reset sandbox and memory**
+3. **Expected:** status `completed`, **task success: yes**. **Telemetry → Reset sandbox**
    restores the sandbox. Nothing left the machine: the email went to `runtime/sandbox/outbox/emails.jsonl`.
 
 ### AC 3: every input, tool call, memory write and output is logged with provenance

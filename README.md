@@ -54,8 +54,9 @@ python -m aiworkspace serve        # open http://localhost:8000
 docker compose up --build          # open http://localhost:8000
 ```
 
-Cloud models instead of (or as well as) Ollama: copy `.env.example` to `.env` and set
-`GEMINI_API_KEY`, `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. Full details are in the
+Online models instead of (or as well as) Ollama: copy `.env.example` to `.env` and set a key:
+`GEMINI_API_KEY` or `GROQ_API_KEY` (both have free tiers), `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
+`OPENROUTER_API_KEY` or `MISTRAL_API_KEY`. Full details are in the
 [setup guide](docs/SETUP.md).
 
 ## Features
@@ -66,7 +67,7 @@ Cloud models instead of (or as well as) Ollama: copy `.env.example` to `.env` an
 * **Agent:** tool-calling loop with a step limit, multi-turn conversations (short-term memory),
   chat in the browser or with `python -m aiworkspace chat`, long-term memory with
   provenance, and recovery of tool calls that small models write as plain text.
-* **Models:** any LiteLLM model: Ollama, vLLM, llama.cpp, Gemini, OpenAI, Anthropic. Choose
+* **Models:** any LiteLLM model: Ollama, vLLM, llama.cpp, Gemini, Groq, OpenAI, Anthropic, OpenRouter, Mistral. Choose
   per run, no code changes, with a budget cap on paid APIs.
 * **Tools:** 12 sandbox tools with risk / scope metadata, plus MCP servers over stdio or
   Streamable HTTP. Every call goes through one `execute_tool()` gateway.

@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from pathlib import Path
 
 from .agent import Agent
 from .config import ROOT, config_hash, deep_merge, resolve_path, workspace_config
@@ -27,7 +28,13 @@ class Workspace:
         tcfg = self.cfg.get("telemetry", {})
         self.telemetry = telemetry or Telemetry(resolve_path(tcfg.get("db_path", "runtime/telemetry.db")),
                                                 tcfg.get("content_max_chars", 4000), db_url=tcfg.get("db_url"))
-        self.memory = memory or LongTermMemory(resolve_path(self.cfg.get("memory", {}).get("db_path", "runtime/memory.db")))
+        mcfg = self.cfg.get("memory", {}) or {}
+        # Two long-term memories: task runs (Experiments) get a throwaway one that is cleared before
+        # every run, so experiments are reproducible; chats keep a persistent one of their own.
+        self.memory = memory or LongTermMemory(resolve_path(mcfg.get("db_path", "runtime/memory.db")))
+        self.chat_memory = LongTermMemory(resolve_path(mcfg.get("chat_db_path", "runtime/chat_memory.db"))) \
+            if memory is None else LongTermMemory(Path(str(self.memory.db_path) + ".chat"))
+        self.conversations = self.chat_memory.conversations   # short-term memory of every session
         self.sandbox = sandbox or make_sandbox(self.cfg)
         self.gateway = ToolGateway(self.sandbox, self.memory)
         self.models = model_client or ModelClient(self.cfg)
@@ -53,13 +60,15 @@ class Workspace:
     # ---- running ----------------------------------------------------------------
     async def run(self, *, task_id: str | None = None, prompt: str | None = None, model: str | None = None,
                   repeat_index: int = 0, batch_id: str | None = None, run_id: str | None = None,
-                  session_id: str | None = None, keep_memory: bool = False) -> dict:
+                  session_id: str | None = None) -> dict:
         """Run a task (all its turns) or a typed prompt.
 
         `session_id` continues an earlier conversation (a console follow-up): its short-term
         memory is restored and the sandbox / long-term memory are NOT reset, so the agent sees the
-        state the previous turn left behind. `keep_memory` starts a new conversation on a clean
-        sandbox but keeps long-term memory (the chat screen uses this).
+        state the previous turn left behind.
+
+        Task runs use the experiments memory (cleared before each run). Typed prompts (Chat, CLI)
+        use the persistent chat memory, so what the agent remembers in a chat survives task runs.
         """
         if task_id:
             if task_id not in self.tasks:
@@ -70,7 +79,8 @@ class Workspace:
         else:
             raise ValueError("give a task_id or a prompt")
         turns = task_turns(task) if task_id else [{"prompt": prompt, "new_conversation": False}]
-        continuing = bool(session_id) and self.memory.conversations.exists(session_id)
+        continuing = bool(session_id) and self.conversations.exists(session_id)
+        memory = self.memory if task_id else self.chat_memory
         session_id = session_id or f"sess-{uuid.uuid4().hex[:10]}"
         model = model or task.get("model") or self.cfg["agent"]["default_model"]
         run_id = run_id or f"run-{uuid.uuid4().hex[:12]}"
@@ -88,7 +98,7 @@ class Workspace:
             ctx = RunContext(
                 run_id=run_id, task_id=task["id"], agent_id=agent_id, model=model, telemetry=self.telemetry,
                 hooks=self.hooks, trust_levels=(self.cfg.get("provenance") or {}).get("trust_levels", {}),
-                label=task["label"], category=task["category"], session_id=session_id,
+                label=task["label"], category=task["category"], session_id=session_id, memory=memory,
                 task={k: task.get(k) for k in ("id", "name", "label", "category", "prompt", "authorised", "description")},
             )
             try:
@@ -97,10 +107,10 @@ class Workspace:
                                  "sandbox_continuity": (self._sandbox_session == session_id) if continuing else None,
                                  "max_steps_per_turn": self.agent.max_steps, "allowed_tools": task.get("tools")})
                 if continuing:
-                    history = self.memory.conversations.get(session_id)
+                    history = self.conversations.get(session_id)
                 else:
                     history = []
-                    await self._prepare(task, ctx, keep_memory=keep_memory)
+                    await self._prepare(task, ctx)
                 outputs, status, steps = [], "completed", 0
                 for i, turn in enumerate(turns, start=1):
                     ctx.turn = i
@@ -113,7 +123,7 @@ class Workspace:
                     status = result["status"]
                     if status == "error":
                         break
-                self.memory.conversations.save(session_id, history, model)
+                self.conversations.save(session_id, history, model)
                 self._sandbox_session = session_id
                 if len(outputs) == 1:
                     final_output = outputs[0]
@@ -135,7 +145,7 @@ class Workspace:
                 raise
         return self.telemetry.get_run(run_id)
 
-    async def _prepare(self, task: dict, ctx: RunContext, keep_memory: bool = False) -> None:
+    async def _prepare(self, task: dict, ctx: RunContext) -> None:
         """Clean sandbox + memory (FR-13), then apply the task's setup."""
         setup = task.get("setup") or {}
         overlay = dict(setup.get("files") or {})
@@ -145,7 +155,7 @@ class Workspace:
             overlay[dest] = (ROOT / "attack_assets" / src).read_text(encoding="utf-8")
         if (self.cfg.get("sandbox") or {}).get("reset_between_runs", True):
             await self.sandbox.reset(overlay)
-        if not keep_memory and (self.cfg.get("memory") or {}).get("reset_between_runs", True):
+        if ctx.memory is self.memory and (self.cfg.get("memory") or {}).get("reset_between_runs", True):
             self.memory.reset()
         for item in setup.get("memory", []) or []:
             await self.memory.write_memory(item["content"], source=item.get("source", "memory"), ctx=ctx,
