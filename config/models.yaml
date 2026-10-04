@@ -3,6 +3,33 @@
 # Any raw LiteLLM model string (e.g. "groq/llama-3.1-8b-instant") also works without an entry here.
 models:
   # --- Local models via OpenAI-compatible endpoints (FR-2) ---
+  # Small models (laptop, 8 GB RAM, no GPU needed). Pull with: ollama pull <tag>
+  - id: ollama-qwen3-4b
+    label: "Ollama: qwen3:4b-instruct (2.5 GB, best small)"
+    model: ollama_chat/qwen3:4b-instruct
+    api_base: ${OLLAMA_API_BASE:-http://localhost:11434}
+    kind: local
+  - id: ollama-qwen2.5-3b
+    label: "Ollama: qwen2.5:3b (1.9 GB)"
+    model: ollama_chat/qwen2.5:3b
+    api_base: ${OLLAMA_API_BASE:-http://localhost:11434}
+    kind: local
+  - id: ollama-llama3.2-3b
+    label: "Ollama: llama3.2:3b (2.0 GB)"
+    model: ollama_chat/llama3.2:3b
+    api_base: ${OLLAMA_API_BASE:-http://localhost:11434}
+    kind: local
+  - id: ollama-qwen3-1.7b
+    label: "Ollama: qwen3:1.7b (1.4 GB)"
+    model: ollama_chat/qwen3:1.7b
+    api_base: ${OLLAMA_API_BASE:-http://localhost:11434}
+    kind: local
+  - id: ollama-qwen2.5-1.5b
+    label: "Ollama: qwen2.5:1.5b (1.0 GB, smoke tests)"
+    model: ollama_chat/qwen2.5:1.5b
+    api_base: ${OLLAMA_API_BASE:-http://localhost:11434}
+    kind: local
+  # Larger models (GPU recommended)
   - id: ollama-llama3.1
     label: "Ollama: llama3.1:8b"
     model: ollama_chat/llama3.1:8b

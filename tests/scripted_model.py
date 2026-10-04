@@ -10,6 +10,7 @@ import json
 import uuid
 
 from aiworkspace.models import ModelReply
+from aiworkspace.tasks import task_turns
 
 # Fixed traces per task id: {"tool": name, "args": {...}} steps, then {"final": text}.
 # "{tool_outputs}" in a final text is replaced with everything the tools returned.
@@ -48,6 +49,16 @@ TRACES: dict[str, list[dict]] = {
                                                          "attendees": ["kavya.nair@northwind.example"]}},
         {"final": "Created 'Pricing review'."},
     ],
+    "followup_report": {
+        1: [{"tool": "read_file", "args": {"path": "report.pdf"}}, {"final": "Q3 revenue was INR 48.2 crore."}],
+        2: [{"final": "Management expects INR 50 to 53 crore in Q4."}],
+    },
+    "preference_across_sessions": {
+        1: [{"tool": "remember", "args": {"content": "User preference: summaries are exactly three bullet points."}},
+            {"final": "Noted."}],
+        2: [{"tool": "read_file", "args": {"path": "meeting_notes.txt"}},
+            {"final": "- Q3 closed ahead of plan - Hiring behind by 4 - Acme pricing due 08 Oct"}],
+    },
     "remember_deadline": [
         {"tool": "remember", "args": {"content": "Data platform launch deadline: 15 November 2026."}},
         {"final": "Noted."},
@@ -79,14 +90,20 @@ class ScriptedModelClient:
     """Same interface as aiworkspace.models.ModelClient.complete()."""
 
     def __init__(self, tasks: dict[str, dict]):
-        self.by_prompt = {t["prompt"]: TRACES.get(tid, [{"final": "ok"}]) for tid, t in tasks.items()}
+        self.by_prompt: dict[str, list[dict]] = {}
+        for tid, task in tasks.items():
+            traces = TRACES.get(tid, [{"final": "ok"}])
+            for i, turn in enumerate(task_turns(task), start=1):
+                self.by_prompt[turn["prompt"]] = traces.get(i, [{"final": "ok"}]) if isinstance(traces, dict) else traces
         self.calls = 0
+        self.seen: list[list[dict]] = []   # messages of every call, for assertions
 
     async def complete(self, model_id: str, messages: list[dict], tools: list[dict] | None = None) -> ModelReply:
         self.calls += 1
-        user = next(m["content"] for m in messages if m["role"] == "user")
-        trace = self.by_prompt.get(user, [{"final": "ok"}])
-        done = sum(1 for m in messages if m.get("role") == "assistant" and m.get("tool_calls"))
+        self.seen.append(messages)
+        last_user = max(i for i, m in enumerate(messages) if m["role"] == "user")
+        trace = self.by_prompt.get(messages[last_user]["content"], [{"final": "ok"}])
+        done = sum(1 for m in messages[last_user:] if m.get("role") == "assistant" and m.get("tool_calls"))
         steps = [s for s in trace if "tool" in s]
         if done < len(steps):
             step = steps[done]
@@ -95,7 +112,7 @@ class ScriptedModelClient:
             raw = {"role": "assistant", "content": None, "tool_calls": [
                 {"id": call["id"], "type": "function", "function": {"name": call["name"], "arguments": call["raw_arguments"]}}]}
             return ModelReply(content=None, tool_calls=[call], raw_message=raw, model="test/scripted", latency_ms=0.0)
-        outputs = "\n".join(str(m.get("content", "")) for m in messages if m.get("role") == "tool")
+        outputs = "\n".join(str(m.get("content", "")) for m in messages[last_user:] if m.get("role") == "tool")
         final = next((s["final"] for s in trace if "final" in s), "ok").replace("{tool_outputs}", outputs)
         return ModelReply(content=final, tool_calls=[], raw_message={"role": "assistant", "content": final},
                           model="test/scripted", latency_ms=0.0)

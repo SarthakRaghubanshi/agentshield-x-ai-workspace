@@ -21,6 +21,8 @@ class RunContext:
     category: str | None = None
     task: dict = field(default_factory=dict)
     step: int = 0
+    turn: int = 1
+    session_id: str | None = None
     trace: list = field(default_factory=list)
 
     def trust(self, source: str) -> str:
@@ -30,13 +32,13 @@ class RunContext:
         return HookContext(
             point="", run_id=self.run_id, task_id=self.task_id, agent_id=self.agent_id, step=self.step,
             source=source, trust_level=self.trust(source), model=self.model, task=self.task,
-            tool=tool, trace=list(self.trace), extra=extra or {},
+            tool=tool, trace=list(self.trace), extra={"turn": self.turn, "session_id": self.session_id} | (extra or {}),
         )
 
     def log(self, event_type: str, hook: HookOutcome | None = None, guard_column: str | None = None, **fields: Any) -> dict:
         """Write one telemetry event, filling identifiers and any security-layer verdicts."""
         base = dict(run_id=self.run_id, task_id=self.task_id, agent_id=self.agent_id, step=self.step,
-                    label=self.label, category=self.category, model=self.model)
+                    turn=self.turn, label=self.label, category=self.category, model=self.model)
         overrides: dict[str, Any] = {}
         if hook is not None and hook.hooks_ran:
             if guard_column and hook.guard_result is not None:

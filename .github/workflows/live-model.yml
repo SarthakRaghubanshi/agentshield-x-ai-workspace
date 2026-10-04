@@ -1,0 +1,78 @@
+name: live-model
+# Real-LLM checks (PRD acceptance 1-2): runs a small Ollama model on the CI runner (CPU).
+# Manual only, to save Actions minutes:  gh workflow run live-model.yml [-f model_id=ollama-qwen2.5-3b]
+on:
+  workflow_dispatch:
+    inputs:
+      model_id:
+        description: "model id from config/models.yaml (an Ollama entry)"
+        default: ollama-qwen2.5-1.5b
+      ollama_tag:
+        description: "the matching Ollama tag to pull"
+        default: qwen2.5:1.5b
+
+jobs:
+  local:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: install Ollama and pull the model
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          (ollama serve > /tmp/ollama.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf localhost:11434/api/version && break; sleep 2; done
+          ollama pull "${{ inputs.ollama_tag }}"
+      - name: live-model tests (same tasks, real model)
+        env:
+          AIWORKSPACE_LIVE_MODELS: ${{ inputs.model_id }}
+        run: pytest -q tests/test_live_model.py -s
+      - name: benign + attack suite on the real model
+        run: |
+          python -m aiworkspace batch --model "${{ inputs.model_id }}" | tee batch.txt
+          python -m aiworkspace export --fmt csv --table runs --out runs.csv
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-results-${{ inputs.model_id }}
+          path: |
+            batch.txt
+            runs.csv
+            runtime/telemetry.db
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DOCKER_OLLAMA_API_BASE: http://ollama:11434
+    steps:
+      - uses: actions/checkout@v4
+      - name: start the stack with the bundled Ollama container
+        run: |
+          docker compose --profile ollama up --build -d
+          docker compose exec -T ollama ollama pull "${{ inputs.ollama_tag }}"
+          for i in $(seq 1 90); do curl -sf localhost:8000/api/health && break; sleep 2; done
+      - name: run a multi-tool task inside Docker via the API
+        run: |
+          RUN=$(curl -sf -X POST localhost:8000/api/runs -H 'Content-Type: application/json' \
+                -d '{"task_id":"summarise_report","model":"${{ inputs.model_id }}"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['run_ids'][0])")
+          for i in $(seq 1 300); do
+            STATUS=$(curl -s localhost:8000/api/runs/$RUN | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('run',{}).get('status','queued'))")
+            [ "$STATUS" != "queued" ] && [ "$STATUS" != "running" ] && break; sleep 3
+          done
+          curl -s localhost:8000/api/runs/$RUN | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin); r = d['run']
+          calls = [e for e in d['events'] if e['event_type'] == 'tool_call']
+          print('status', r['status'], 'task_success', r['task_success'], 'tool calls', len(calls))
+          print(r['final_output'])
+          assert r['status'] in ('completed', 'max_steps'), r
+          assert any(e['event_type'] == 'model_call' and e['total_tokens'] for e in d['events'])
+          "
+      - if: always()
+        run: docker compose logs --no-color | tail -200

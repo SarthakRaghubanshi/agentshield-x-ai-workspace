@@ -6,6 +6,8 @@
 #             restored from the seed on every run.
 # ollama    : optional local models  ->  set DOCKER_OLLAMA_API_BASE=http://ollama:11434, then
 #             docker compose --profile ollama up   (NVIDIA GPU: add -f docker-compose.gpu.yml)
+# postgres  : optional telemetry database -> set TELEMETRY_DB_URL (see .env.example), then
+#             docker compose --profile postgres up
 name: agentshield-workspace
 
 x-hardening: &hardening
@@ -53,6 +55,9 @@ services:
       VLLM_API_BASE: ${DOCKER_VLLM_API_BASE:-http://host.docker.internal:8001/v1}
       LLAMACPP_API_BASE: ${DOCKER_LLAMACPP_API_BASE:-http://host.docker.internal:8080/v1}
       AGENTSHIELD_PLUGINS: ${AGENTSHIELD_PLUGINS:-}
+      # Optional PostgreSQL telemetry (profile `postgres`):
+      #   TELEMETRY_DB_URL=postgresql://agentshield:agentshield@postgres:5432/telemetry
+      TELEMETRY_DB_URL: ${TELEMETRY_DB_URL:-}
       HOME: /tmp
     env_file:
       - path: .env
@@ -62,8 +67,22 @@ services:
       - runtime:/app/runtime          # telemetry.db + memory.db survive restarts
     tmpfs: ["/tmp:size=64m"]
     extra_hosts: ["host.docker.internal:host-gateway"]
-    networks: [sandbox_net, egress]
+    networks: [sandbox_net, data_net, egress]
     mem_limit: 1g
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: agentshield
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentshield}
+      POSTGRES_DB: telemetry
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [data_net]              # reachable from `workspace` only, never from `sandbox`
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentshield -d telemetry"]
+      interval: 5s
+      retries: 20
 
   ollama:
     image: ollama/ollama:latest
@@ -75,8 +94,11 @@ services:
 networks:
   sandbox_net:
     internal: true                    # no route to the internet
+  data_net:
+    internal: true                    # workspace <-> postgres only
   egress: {}
 
 volumes:
   runtime: {}
   ollama: {}
+  pgdata: {}

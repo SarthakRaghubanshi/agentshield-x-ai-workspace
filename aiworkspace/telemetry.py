@@ -4,6 +4,10 @@ Every observable agent action is one row in `events`. The SRS columns come first
 columns (guard results, scores, decision) exist but stay NULL until the security layer fills
 them through the extension points. Extra columns (model, tokens, latency, args...) are there for
 feature engineering by the ML teammates.
+
+Storage: SQLite by default (`telemetry.db_path`). For larger experiment volumes set
+`telemetry.db_url` (or the TELEMETRY_DB_URL environment variable) to a PostgreSQL URL,
+e.g. postgresql://agentshield:secret@localhost:5432/telemetry  (PRD FR-21).
 """
 from __future__ import annotations
 
@@ -11,8 +15,10 @@ import asyncio
 import csv
 import io
 import json
+import os
 import sqlite3
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -24,7 +30,7 @@ SRS_COLUMNS = [
     "provenance_source", "trust_level", "anomaly_score", "risk_score", "final_decision", "outcome",
 ]
 EXTRA_COLUMNS = [
-    "run_id", "step", "label", "category", "model", "latency_ms", "prompt_tokens",
+    "run_id", "step", "turn", "label", "category", "model", "latency_ms", "prompt_tokens",
     "completion_tokens", "total_tokens", "cost_usd", "args_json", "content", "details_json",
 ]
 EVENT_COLUMNS = ["event_id"] + SRS_COLUMNS + EXTRA_COLUMNS
@@ -36,26 +42,27 @@ EVENT_TYPES = {
 
 RUN_COLUMNS = [
     "run_id", "task_id", "label", "category", "model", "defence", "agent_id", "repeat_index", "batch_id",
+    "session_id", "turns",
     "started_at", "ended_at", "status", "steps", "prompt", "final_output", "task_success",
     "attack_success", "evaluation_json", "config_hash", "seed", "hooks_json", "error",
 ]
 
-_SCHEMA = f"""
+_SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
-    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id {autoinc},
     timestamp TEXT NOT NULL, task_id TEXT, agent_id TEXT, event_type TEXT NOT NULL,
     tool_called TEXT, resource_accessed TEXT,
     input_guard_result TEXT, output_guard_result TEXT, authorisation_result TEXT,
     provenance_source TEXT, trust_level TEXT, anomaly_score REAL, risk_score REAL,
     final_decision TEXT, outcome TEXT,
-    run_id TEXT, step INTEGER, label TEXT, category TEXT, model TEXT, latency_ms REAL,
+    run_id TEXT, step INTEGER, turn INTEGER, label TEXT, category TEXT, model TEXT, latency_ms REAL,
     prompt_tokens INTEGER, completion_tokens INTEGER, total_tokens INTEGER, cost_usd REAL,
     args_json TEXT, content TEXT, details_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_run ON events(run_id);
 CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY, task_id TEXT, label TEXT, category TEXT, model TEXT, defence TEXT, agent_id TEXT,
-    repeat_index INTEGER, batch_id TEXT, started_at TEXT, ended_at TEXT, status TEXT, steps INTEGER,
+    repeat_index INTEGER, batch_id TEXT, session_id TEXT, turns INTEGER, started_at TEXT, ended_at TEXT, status TEXT, steps INTEGER,
     prompt TEXT, final_output TEXT, task_success INTEGER, attack_success INTEGER,
     evaluation_json TEXT, config_hash TEXT, seed INTEGER, hooks_json TEXT, error TEXT
 );
@@ -66,21 +73,113 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
+class _SQLite:
+    """SQLite backend (default)."""
+
+    placeholder = "?"
+
+    def __init__(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.conn = sqlite3.connect(path, check_same_thread=False)
+        self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.executescript(_SCHEMA.format(autoinc="INTEGER PRIMARY KEY AUTOINCREMENT"))
+        self.conn.commit()
+
+    def columns(self, table: str) -> set[str]:
+        return {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})")}
+
+    def execute(self, sql: str, params: list) -> None:
+        self.conn.execute(sql, params)
+        self.conn.commit()
+
+    def insert_returning_id(self, sql: str, params: list, id_column: str) -> int:
+        cur = self.conn.execute(sql, params)
+        self.conn.commit()
+        return cur.lastrowid
+
+    def query(self, sql: str, params: list) -> list[dict]:
+        return [dict(r) for r in self.conn.execute(sql, params).fetchall()]
+
+    def close(self) -> None:
+        self.conn.close()
+
+
+class _Postgres:
+    """PostgreSQL backend (optional; needs `psycopg`)."""
+
+    placeholder = "%s"
+
+    def __init__(self, url: str):
+        import psycopg
+        from psycopg.rows import dict_row
+
+        for attempt in range(15):  # the database container may still be starting
+            try:
+                self.conn = psycopg.connect(url, autocommit=True, row_factory=dict_row)
+                break
+            except psycopg.OperationalError:
+                if attempt == 14:
+                    raise
+                time.sleep(2)
+        with self.conn.cursor() as cur:
+            for statement in _SCHEMA.format(autoinc="BIGSERIAL PRIMARY KEY").split(";"):
+                if statement.strip():
+                    cur.execute(statement.replace(" REAL", " DOUBLE PRECISION"))
+
+    def columns(self, table: str) -> set[str]:
+        rows = self.query("SELECT column_name FROM information_schema.columns WHERE table_name=%s", [table])
+        return {r["column_name"] for r in rows}
+
+    def execute(self, sql: str, params: list) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute(sql, params)
+
+    def insert_returning_id(self, sql: str, params: list, id_column: str) -> int:
+        with self.conn.cursor() as cur:
+            cur.execute(f"{sql} RETURNING {id_column}", params)
+            return cur.fetchone()[id_column]
+
+    def query(self, sql: str, params: list) -> list[dict]:
+        with self.conn.cursor() as cur:
+            cur.execute(sql, params)
+            return list(cur.fetchall())
+
+    def close(self) -> None:
+        self.conn.close()
+
+
 class Telemetry:
-    def __init__(self, db_path: str | Path, content_max_chars: int = 4000):
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, db_path: str | Path | None = None, content_max_chars: int = 4000, db_url: str | None = None):
         self.content_max_chars = content_max_chars
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.executescript(_SCHEMA)
-        existing = {r[1] for r in self._conn.execute("PRAGMA table_info(runs)")}
-        if "defence" not in existing:  # databases created by v0.1.0 drafts
-            self._conn.execute("ALTER TABLE runs ADD COLUMN defence TEXT")
-        self._conn.commit()
+        db_url = db_url or os.environ.get("TELEMETRY_DB_URL")
+        if db_url and db_url.startswith(("postgres://", "postgresql://")):
+            self._db = _Postgres(db_url)
+            self.backend = "postgresql"
+        else:
+            self._db = _SQLite(Path(db_path or "runtime/telemetry.db"))
+            self.backend = "sqlite"
+        self._migrate()
         self._subscribers: dict[str, list[asyncio.Queue]] = {}
+
+    def _sql(self, sql: str) -> str:
+        return sql.replace("?", self._db.placeholder) if self._db.placeholder != "?" else sql
+
+    def _migrate(self) -> None:
+        """Add columns introduced after a database was created (keeps old telemetry readable)."""
+        for table, columns in (("runs", {"defence": "TEXT", "session_id": "TEXT", "turns": "INTEGER"}),
+                               ("events", {"turn": "INTEGER"})):
+            existing = self._db.columns(table)
+            for name, kind in columns.items():
+                if name not in existing:
+                    self._db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}", [])
+
+    def clear(self) -> None:
+        """Delete all telemetry (used by tests and by an explicit reset)."""
+        with self._lock:
+            self._db.execute("DELETE FROM events", [])
+            self._db.execute("DELETE FROM runs", [])
 
     # ---- writing --------------------------------------------------------
     def log(self, event_type: str, **fields: Any) -> dict:
@@ -98,12 +197,10 @@ class Telemetry:
             row["content"] = row["content"][: self.content_max_chars] + "...[truncated]"
         cols = list(row)
         with self._lock:
-            cur = self._conn.execute(
-                f"INSERT INTO events ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
-                [row[c] for c in cols],
+            row["event_id"] = self._db.insert_returning_id(
+                self._sql(f"INSERT INTO events ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})"),
+                [row[c] for c in cols], "event_id",
             )
-            self._conn.commit()
-            row["event_id"] = cur.lastrowid
         self._publish(row.get("run_id"), {"kind": "event", "event": row})
         return row
 
@@ -111,12 +208,13 @@ class Telemetry:
         fields.setdefault("started_at", now_iso())
         fields.setdefault("status", "running")
         cols = [c for c in RUN_COLUMNS if c in fields]
+        updates = ", ".join(f"{c}=excluded.{c}" for c in cols if c != "run_id")
         with self._lock:
-            self._conn.execute(
-                f"INSERT OR REPLACE INTO runs ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
+            self._db.execute(
+                self._sql(f"INSERT INTO runs ({','.join(cols)}) VALUES ({','.join('?' * len(cols))}) "
+                          f"ON CONFLICT (run_id) DO UPDATE SET {updates}"),
                 [fields[c] for c in cols],
             )
-            self._conn.commit()
         self._publish(fields["run_id"], {"kind": "run", "run": self.get_run(fields["run_id"])})
 
     def update_run(self, run_id: str, **fields: Any) -> None:
@@ -128,11 +226,10 @@ class Telemetry:
                 fields[k] = int(fields[k])
         cols = [c for c in fields if c in RUN_COLUMNS]
         with self._lock:
-            self._conn.execute(
-                f"UPDATE runs SET {', '.join(f'{c}=?' for c in cols)} WHERE run_id=?",
+            self._db.execute(
+                self._sql(f"UPDATE runs SET {', '.join(f'{c}=?' for c in cols)} WHERE run_id=?"),
                 [fields[c] for c in cols] + [run_id],
             )
-            self._conn.commit()
         run = self.get_run(run_id)
         self._publish(run_id, {"kind": "run", "run": run})
         if run and run.get("status") != "running":
@@ -141,7 +238,7 @@ class Telemetry:
     # ---- reading --------------------------------------------------------
     def _query(self, sql: str, params: Iterable = ()) -> list[dict]:
         with self._lock:
-            return [dict(r) for r in self._conn.execute(sql, list(params)).fetchall()]
+            return self._db.query(self._sql(sql), list(params))
 
     def get_run(self, run_id: str) -> dict | None:
         rows = self._query("SELECT * FROM runs WHERE run_id=?", [run_id])
@@ -182,7 +279,8 @@ class Telemetry:
                        SUM(CASE WHEN final_decision IN ('BLOCK','REVIEW') THEN 1 ELSE 0 END) AS blocked
                 FROM events WHERE run_id IN ({marks}) GROUP BY run_id""", ids)}
         hook_ms: dict[str, float] = {}
-        for e in self._query(f"SELECT run_id, details_json FROM events WHERE run_id IN ({marks}) AND details_json LIKE '%hook_ms%'", ids):
+        for e in self._query(f"SELECT run_id, details_json FROM events WHERE run_id IN ({marks}) AND details_json LIKE ?",
+                             ids + ["%hook_ms%"]):
             hook_ms[e["run_id"]] = hook_ms.get(e["run_id"], 0.0) + float(json.loads(e["details_json"]).get("hook", {}).get("hook_ms", 0))
 
         def rate(num, den):
@@ -253,4 +351,4 @@ class Telemetry:
 
     def close(self) -> None:
         with self._lock:
-            self._conn.close()
+            self._db.close()

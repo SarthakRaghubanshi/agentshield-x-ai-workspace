@@ -3,8 +3,9 @@
 
 agent:
   agent_id: workspace-agent-1
-  default_model: ollama-qwen2.5      # id from config/models.yaml (or any raw LiteLLM model string)
-  max_steps: 10
+  default_model: ollama-qwen3-4b     # id from config/models.yaml (or any raw LiteLLM model string)
+  max_steps: 10                        # model calls per user turn
+  parse_text_tool_calls: true          # accept tool calls small models write as JSON text
   temperature: 0.0
   seed: 42                            # passed to providers that support it (NFR-3)
   system_prompt: |
@@ -25,8 +26,12 @@ hooks:
     before_memory_write: false
     before_output: false
   plugins: []                          # e.g. ["examples.example_guard:register"]
-  # What the workspace does when a hook returns REVIEW: "block" (hold the action) or "allow".
+  # What happens when a hook returns REVIEW:
+  #   block - the action is held (not executed)      allow - it goes ahead (decision still logged)
+  #   human - the run pauses until someone approves/rejects it in the console (CLI runs: block)
   review_behaviour: block
+  review_timeout_s: 300                # human review: no answer in time = rejected
+  on_error: allow                      # a crashing handler: "allow" (fail open) or "block" (fail closed)
 
 # Default provenance trust level per source tag (FR-20). Metadata only - nothing enforces it.
 provenance:
@@ -50,7 +55,8 @@ memory:
   recall_top_k: 3                      # memories injected into the system prompt at task start
 
 telemetry:
-  db_path: runtime/telemetry.db
+  db_path: runtime/telemetry.db        # SQLite (default)
+  db_url: ${TELEMETRY_DB_URL:-}        # optional PostgreSQL, e.g. postgresql://user:pass@host:5432/telemetry
   content_max_chars: 4000
 
 budget:

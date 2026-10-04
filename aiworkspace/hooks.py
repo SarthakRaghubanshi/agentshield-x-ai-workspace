@@ -111,9 +111,12 @@ class HookManager:
     def __init__(self, enabled: dict | None = None, review_behaviour: str = "block", on_error: str = "allow"):
         self.enabled: dict[str, bool] = {p: bool((enabled or {}).get(p, False)) for p in HOOK_POINTS}
         self.handlers: dict[str, list[Handler]] = {p: [] for p in HOOK_POINTS}
-        self.review_behaviour = review_behaviour
+        self.review_behaviour = review_behaviour   # block | allow | human
         self.on_error = on_error
         self.plugins: list[str] = []
+        # Set by the API server: async (point, payload, ctx, outcome) -> bool (approved).
+        # Used when review_behaviour == "human"; without it REVIEW falls back to block.
+        self.reviewer: Callable[[str, Any, HookContext, "HookOutcome"], Awaitable[bool]] | None = None
 
     # ---- registration -------------------------------------------------
     def register(self, point: str, handler: Handler) -> None:
@@ -194,10 +197,18 @@ class HookManager:
         outcome.reason = "; ".join(reasons)
         # Time spent inside the security layer at this point (SRS Ch. 13 latency overhead).
         outcome.metadata["hook_ms"] = round((time.perf_counter() - started) * 1000, 3)
-        if outcome.decision == Decision.REVIEW and self.review_behaviour == "allow":
-            outcome.metadata["review_allowed"] = True
-            outcome.decision = Decision.ALLOW
+        if outcome.decision == Decision.REVIEW:
             outcome.metadata["original_decision"] = "REVIEW"
+            if self.review_behaviour == "allow":
+                outcome.decision = Decision.ALLOW
+            elif self.review_behaviour == "human" and self.reviewer is not None:
+                approved = await self.reviewer(point, outcome.payload, ctx, outcome)
+                outcome.metadata["human_review"] = {"approved": approved}
+                outcome.decision = Decision.ALLOW if approved else Decision.BLOCK
+                outcome.reason = (outcome.reason + "; " if outcome.reason else "") + (
+                    "approved by a human reviewer" if approved else "rejected by a human reviewer")
+            elif self.review_behaviour == "human":
+                outcome.metadata["human_review"] = {"approved": False, "note": "no reviewer attached (CLI run)"}
         return outcome
 
 

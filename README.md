@@ -33,7 +33,7 @@ cd agentshield-x-ai-workspace
 py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-ollama pull qwen2.5:7b
+ollama pull qwen3:4b-instruct
 python -m aiworkspace serve        # open http://localhost:8000
 ```
 
@@ -44,7 +44,7 @@ cd agentshield-x-ai-workspace
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-ollama pull qwen2.5:7b
+ollama pull qwen3:4b-instruct
 python -m aiworkspace serve        # open http://localhost:8000
 ```
 
@@ -56,6 +56,22 @@ docker compose up --build          # open http://localhost:8000
 Cloud models instead of (or as well as) Ollama: copy `.env.example` to `.env` and set
 `GEMINI_API_KEY`, `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. Full details are in the
 [setup guide](docs/SETUP.md).
+
+## Features
+
+* **Agent:** tool-calling loop with a step limit, multi-turn conversations (short-term memory),
+  follow-ups from the console or `python -m aiworkspace chat`, long-term memory with
+  provenance, and recovery of tool calls that small models write as plain text.
+* **Models:** any LiteLLM model: Ollama, vLLM, llama.cpp, Gemini, OpenAI, Anthropic. Choose
+  per run, no code changes, with a budget cap on paid APIs.
+* **Tools:** 12 sandbox tools with risk / scope metadata, plus MCP servers over stdio or
+  Streamable HTTP. Every call goes through one `execute_tool()` gateway.
+* **Sandbox:** synthetic data, a clean reset before every run, and under Docker a separate
+  container with no internet, a read-only image, a non-root user and dropped capabilities.
+* **Extension points:** four pass-through points for the security layer, switchable at runtime.
+  REVIEW decisions can be held, allowed, or sent to a human Approve / Reject queue in the console.
+* **Telemetry:** SRS Ch. 9.1 schema in SQLite or PostgreSQL, live streaming, CSV / JSON export,
+  and SRS Ch. 13 metrics per model × defence configuration.
 
 ## Architecture
 
@@ -95,7 +111,8 @@ aiworkspace/
   sandbox/        tools with FR-10 metadata, FAISS RAG, MCP bridge, reset, sandbox HTTP server
 config/           workspace.yaml, models.yaml, mcp_servers.yaml
 sandbox_seed/     synthetic data: report.pdf, protected_data.txt, fake keys, contacts, DB, KB, inbox, web pages
-tasks/            9 benign tasks + 7 attack tasks (one per SRS Ch. 10 category)
+tasks/            16 benign tasks (incl. multi-turn) + 7 attack tasks (one per SRS Ch. 10 category)
+attack_assets/    task-specific attack content, copied into the sandbox only for the task that uses it
 mcp_servers/      sample MCP server (calendar)
 examples/         example_guard.py: how a guard plugs in (example only)
 tests/            acceptance tests (+ optional live-model tests)
@@ -106,7 +123,7 @@ docs/             setup, user and integration guides
 
 | # | Criterion | Where |
 |---|---|---|
-| 1 | same task on a cloud and a local model by config only | `--model gemini-flash` vs `--model ollama-qwen2.5`; `tests/test_live_model.py` |
+| 1 | same task on a cloud and a local model by config only | `--model gemini-flash` vs `--model ollama-qwen3-4b`; `tests/test_live_model.py`; the `live-model` workflow |
 | 2 | legitimate multi-tool task in the sandbox | `meeting_followup`, `calendar_mcp`, … (`test_benign_tasks_succeed`) |
 | 3 | every input / tool call / memory write / output in telemetry with provenance | `test_telemetry_covers_all_event_types_with_provenance` |
 | 4 | extension points switch on/off without changing behaviour | `test_enabling_passthrough_hooks_changes_nothing` |
@@ -122,5 +139,5 @@ same tasks on real models when `AIWORKSPACE_LIVE_MODELS` is set.
 
 * **Agent framework:** a custom lightweight tool-calling loop (no LangChain), easy to read and to hook.
 * **UI:** a single-page console served by FastAPI (no build step). The final dashboard is a separate deliverable.
-* **Local model:** `qwen2.5:7b` (reliable tool calls) or `llama3.1:8b` on Ollama, or any model behind vLLM / llama.cpp on the college GPU.
+* **Local model:** `qwen3:4b-instruct` (2.5 GB, runs on a laptop) by default; `qwen2.5:7b` / `llama3.1:8b` or any model behind vLLM / llama.cpp on the college GPU.
 * **Cloud model / budget:** Gemini 2.5 Flash as the low-cost option. Paid spend is capped at USD 2 per process (`budget.max_usd`).

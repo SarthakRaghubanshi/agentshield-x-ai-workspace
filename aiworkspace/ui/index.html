@@ -50,6 +50,7 @@ button:disabled { opacity: .55; cursor: default; }
 .ev.output_generated { border-left-color: var(--ok); }
 .ev.memory_write, .ev.memory_read { border-left-color: var(--warn); }
 .ev.error, .ev.blocked { border-left-color: var(--bad); }
+.ev.review { border-left-color: var(--warn); background: var(--warn-bg); }
 .ev .head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .ev .head b { color: var(--ink); font-size: 13px; }
 .ev pre { margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.45 ui-monospace, Consolas, monospace; background: var(--code); padding: 7px 8px; border-radius: 6px; max-height: 260px; overflow: auto; }
@@ -182,7 +183,16 @@ function renderHooks(status) {
   const points = ["before_input", "before_tool", "before_memory_write", "before_output"];
   $("#hooks").innerHTML = points.map(p => `<div class="toggle"><span>${p}<br><span class="hint">${status[p].handlers.length} handler(s)</span></span>
     <input type="checkbox" data-point="${p}" ${status[p].enabled ? "checked" : ""}></div>`).join("")
-    + (status.plugins.length ? `<div class="hint">Plugins: ${status.plugins.map(esc).join(", ")}</div>` : "");
+    + (status.plugins.length ? `<div class="hint">Plugins: ${status.plugins.map(esc).join(", ")}</div>` : "")
+    + `<label for="reviewmode">When a guard returns REVIEW</label>
+       <select id="reviewmode">
+         <option value="block">Hold the action (block)</option>
+         <option value="allow">Let it through (allow)</option>
+         <option value="human">Ask me here (human review)</option>
+       </select>`;
+  $("#reviewmode").value = status.review_behaviour;
+  $("#reviewmode").onchange = async () => renderHooks(await api("/api/review-mode", { method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({ behaviour: $("#reviewmode").value }) }));
   document.querySelectorAll("[data-point]").forEach(cb => cb.onchange = async () =>
     renderHooks(await api("/api/hooks", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ point: cb.dataset.point, enabled: cb.checked }) })));
 }
@@ -194,7 +204,7 @@ async function startRun() {
   else body.task_id = id;
   $("#runbtn").disabled = true;
   try { const r = await api("/api/runs", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) }); watch(r.run_ids[0]); }
-  catch (e) { alert(e.message); }
+  catch (e) { $("#batchmsg").textContent = "Error: " + e.message; }
   finally { setTimeout(() => $("#runbtn").disabled = false, 400); }
 }
 
@@ -208,6 +218,8 @@ function watch(runId) {
     const msg = JSON.parse(m.data);
     if (msg.kind === "event") addEvent(msg.event);
     if (msg.kind === "run" || msg.kind === "done") renderRunStatus(msg.run);
+    if (msg.kind === "review") addReview(msg.review);
+    if (msg.kind === "review_done") closeReview(msg.review_id, msg.approved);
     if (msg.kind === "done") { source.close(); loadRuns(); }
   };
   source.onerror = () => { source.close(); loadRun(runId); };
@@ -222,7 +234,7 @@ function addEvent(e) {
   else if (e.event_type === "model_call") { title = `model call (${e.outcome})`; body = e.content || (details?.tool_calls || []).map(c => `${c.name}(${JSON.stringify(c.args)})`).join("\n"); }
   else body = e.content;
   const meta = [
-    e.step != null ? `step ${e.step}` : "", e.resource_accessed ? `resource: ${e.resource_accessed}` : "",
+    e.turn > 1 ? `turn ${e.turn}` : "", e.step != null ? `step ${e.step}` : "", e.resource_accessed ? `resource: ${e.resource_accessed}` : "",
     e.provenance_source ? `source: ${e.provenance_source}` : "", e.trust_level ? `trust: ${e.trust_level}` : "",
     e.latency_ms != null ? `${Math.round(e.latency_ms)} ms` : "", e.total_tokens ? `${e.total_tokens} tok` : "",
     e.final_decision ? `decision: ${e.final_decision}` : "", e.outcome && e.event_type !== "model_call" ? `outcome: ${e.outcome}` : "",
@@ -240,8 +252,46 @@ function renderRunStatus(run) {
     <span class="chip ${esc(run.label)}">${esc(run.label)}</span>${catChip(run.label, run.category)}
     <span class="chip">${esc(run.model)}</span><span class="chip">defence: ${esc(run.defence || "baseline")}</span><span class="chip">${esc(run.status)}</span>
     <span>task success: ${flag(run.task_success)}</span><span>attack success: ${flag(run.attack_success)}</span>`;
-  if (run.final_output) $("#final").innerHTML = `<label>Final output</label><div class="output">${esc(run.final_output)}</div>`;
+  const finished = !["queued", "running"].includes(run.status);
+  if (run.final_output) $("#final").innerHTML = `<label>Final output</label><div class="output">${esc(run.final_output)}</div>`
+    + (finished && run.session_id ? `<label for="followup">Follow up in this conversation</label>
+       <div class="row"><textarea id="followup" style="min-height:52px; flex:1" placeholder="Ask a follow-up question…"></textarea>
+       <button class="primary" id="followbtn">Send</button></div>
+       <div class="hint">Continues ${esc(run.session_id)}: the agent keeps the conversation, and the sandbox is not reset.</div>` : "");
   if (run.error) $("#final").innerHTML = `<div class="output no">${esc(run.error)}</div>`;
+  if ($("#followbtn")) $("#followbtn").onclick = () => followUp(run.session_id);
+}
+
+async function followUp(sessionId) {
+  const prompt = $("#followup").value.trim(), model = selectedModel();
+  if (!prompt) return $("#followup").focus();
+  $("#followbtn").disabled = true;
+  const r = await api("/api/runs", { method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ prompt, model, session_id: sessionId }) });
+  watch(r.run_ids[0]);
+}
+
+function addReview(rv) {
+  const el = document.createElement("div");
+  el.className = "ev review"; el.id = rv.review_id;
+  el.innerHTML = `<div class="head"><b>Human review needed: ${esc(rv.point)}</b><span class="chip">step ${rv.step}</span>
+    <span class="chip">times out in ${Math.round(rv.timeout_s)} s</span></div>
+    ${rv.reason ? `<div class="hint">Reason: ${esc(rv.reason)}</div>` : ""}
+    <pre>${esc(typeof rv.payload === "string" ? rv.payload : JSON.stringify(rv.payload, null, 1))}</pre>
+    <div class="row" style="margin-top:8px"><button class="primary" data-approve="1">Approve</button><button data-approve="0">Reject</button></div>`;
+  el.querySelectorAll("[data-approve]").forEach(b => b.onclick = async () => {
+    el.querySelectorAll("button").forEach(x => x.disabled = true);
+    await fetch(`/api/reviews/${rv.review_id}`, { method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ approve: b.dataset.approve === "1" }) });
+  });
+  $("#timeline").appendChild(el);
+  $("#timeline").scrollTop = $("#timeline").scrollHeight;
+}
+
+function closeReview(id, approved) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.querySelector(".row").innerHTML = `<span class="${approved ? "yes" : "no"}">${approved ? "Approved" : "Rejected"}</span>`;
 }
 
 async function loadRun(runId) {

@@ -15,6 +15,30 @@ jobs:
       - run: pip install -r requirements.txt
       - run: pytest -q
 
+  postgres:
+    # PRD FR-21: the same suite with telemetry stored in PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: agentshield
+          POSTGRES_PASSWORD: agentshield
+          POSTGRES_DB: telemetry
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U agentshield -d telemetry" --health-interval 5s --health-retries 20
+    env:
+      TELEMETRY_DB_URL: postgresql://agentshield:agentshield@localhost:5432/telemetry
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest -q
+
   docker:
     # PRD NFR-7 (one command) and FR-11 (isolated sandbox): build, start, probe.
     runs-on: ubuntu-latest
@@ -27,6 +51,7 @@ jobs:
           for i in $(seq 1 90); do curl -sf localhost:8000/api/health && break; sleep 2; done
           curl -sf localhost:8000/api/health | tee /dev/stderr | grep -q '"sandbox_mode":"remote"'
           curl -sf localhost:8000/api/tools | python3 -c "import sys,json; t=[x['name'] for x in json.load(sys.stdin)]; print(len(t), t); assert len(t) == 16"
+          curl -sf localhost:8000/api/tasks | python3 -c "import sys,json; t=json.load(sys.stdin); print(len(t), 'tasks'); assert len(t) == 23"
           curl -sf -X POST localhost:8000/api/sandbox/reset
       - name: sandbox container has no internet access
         run: |

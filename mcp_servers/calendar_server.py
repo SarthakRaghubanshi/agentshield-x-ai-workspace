@@ -40,4 +40,13 @@ def create_event(title: str, date: str, time: str, attendees: list[str] | None =
 
 
 if __name__ == "__main__":
-    server.run("stdio")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Sample calendar MCP server")
+    parser.add_argument("--http", type=int, metavar="PORT", help="serve Streamable HTTP on PORT instead of stdio")
+    parser.add_argument("--host", default="127.0.0.1")
+    opts = parser.parse_args()
+    if opts.http:
+        server.run("streamable-http", host=opts.host, port=opts.http)   # url: http://HOST:PORT/mcp
+    else:
+        server.run("stdio")

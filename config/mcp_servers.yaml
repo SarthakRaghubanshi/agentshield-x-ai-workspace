@@ -1,6 +1,14 @@
-# MCP servers (FR-8). Each server is launched over stdio inside the sandbox and its tools are
-# registered in the tool gateway automatically - add a server here, no code changes needed.
-# Tool names are exposed to the agent as  mcp__<server>__<tool>.
+# MCP servers (FR-8). Their tools are registered in the tool gateway automatically - add a server
+# here, no code changes needed. Tool names are exposed to the agent as  mcp__<server>__<tool>.
+#
+# Two kinds of server:
+#   local  (stdio):  command + args   - launched as a subprocess inside the sandbox
+#   remote (HTTP):   url              - an MCP server speaking Streamable HTTP, e.g.
+#       notes:
+#         url: http://notes-mcp:9000/mcp
+#         risk_level: low
+#         resources: ["notes"]
+#   (under Docker the sandbox has no internet, so remote servers must be on the internal network)
 servers:
   calendar:
     command: python

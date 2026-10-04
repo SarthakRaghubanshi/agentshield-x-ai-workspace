@@ -93,8 +93,12 @@ class ToolGateway:
             content = str(args.get("content", "")).strip()
             if not content:
                 return "ERROR: nothing to remember", False
-            # The content was produced by the model during this run.
-            result = await self.memory.write_memory(content, source="tool_output", ctx=context)
+            # The text was produced by the model. Record which kinds of content it had read before
+            # writing (raw provenance data for the security layer; nothing is decided here).
+            seen = sorted({t["provenance_source"] for t in context.trace
+                           if t.get("event_type") in ("tool_result", "memory_read") and t.get("provenance_source")})
+            result = await self.memory.write_memory(content, source="tool_output", ctx=context,
+                                                    metadata={"context_sources": seen})
             return ("Saved to long-term memory." if result["stored"] else f"Memory write not stored: {result.get('reason')}"), result["stored"]
         if name == "recall":
             hits = self.memory.search(str(args.get("query", "")), k=5)

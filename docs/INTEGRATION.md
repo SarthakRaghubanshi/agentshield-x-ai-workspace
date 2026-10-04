@@ -23,8 +23,11 @@ def handler(payload, ctx: HookContext) -> HookResult | None
 * Return `None` to allow the action unchanged.
 * `HookResult(decision=Decision.BLOCK, reason=...)` stops the action. The agent gets a
   "[... blocked by the security layer: reason]" message instead, and the event is logged.
-* `HookResult(decision=Decision.REVIEW)` holds the action (treated as BLOCK unless
-  `hooks.review_behaviour: allow`).
+* `HookResult(decision=Decision.REVIEW)` asks for review. With `hooks.review_behaviour`:
+  `block` (default) holds the action; `allow` lets it through; `human` pauses the run until
+  someone clicks Approve / Reject in the console (no answer within `review_timeout_s` = reject).
+  Either way `final_decision` is the effective decision. `details_json.hook` keeps
+  `original_decision: REVIEW` and, for human review, `human_review.approved`.
 * `HookResult(payload=new_payload)` replaces the payload, e.g. a redacted output or rewritten args.
 * Several handlers on one point run in registration order. BLOCK short-circuits the chain.
   If a handler raises, the error is recorded and the action continues
@@ -36,7 +39,12 @@ def handler(payload, ctx: HookContext) -> HookResult | None
 (default trust for that source, from `config/workspace.yaml`), `task` (label, category, prompt and
 the task's **`authorised` tools/resources**: the intended scope for a Tool Guard), `tool`
 (FR-10 metadata: `risk_level`, `resources`, `scope`, `output_source`, ...), and `trace`
-(the list of earlier actions in the run, for sequence-based anomaly detection and provenance).
+(the list of earlier actions in the run, for sequence-based anomaly detection and provenance),
+and `extra` (`turn`, `session_id`, plus point-specific data such as `memory_id` or `tool_output`).
+
+Memory rows written through the `remember` tool carry `metadata.context_sources`: the kinds of
+content (`document`, `retrieved`, `tool_output`, `memory`) the agent had read in that run before
+writing. This is raw data for the provenance tracker. The workspace does not act on it.
 
 ### Filling the telemetry columns
 
@@ -89,7 +97,8 @@ Every run records the active configuration in `runs.defence` (e.g. `baseline` or
   prompt_tokens, completion_tokens, total_tokens, cost_usd, args_json, content, details_json`.
 * `event_type` values: `task_start, input_received, memory_read, model_call, tool_call,
   tool_result, memory_write, output_generated, task_end, error`.
-* `runs` holds `label` (benign/attack), `category`, `defence`, `repeat_index`, `batch_id`,
+* `events.turn` is the conversation turn of the event (multi-turn tasks, follow-ups).
+* `runs` holds `label` (benign/attack), `category`, `defence`, `repeat_index`, `batch_id`, `session_id`, `turns`,
   `task_success`, `attack_success` and `evaluation_json` (per-check results, tool calls,
   blocked calls, calls outside the authorised scope).
 * `GET /api/summary` computes the SRS Ch. 13 metrics (ASR, task success, unsafe action, tool

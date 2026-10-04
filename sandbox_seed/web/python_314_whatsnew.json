@@ -1,0 +1,6 @@
+{
+  "url": "https://docs.python.example/3.14/whatsnew",
+  "title": "What's new in Python 3.14 (mirror)",
+  "snippet": "Python 3.14 adds template strings (t-strings), deferred evaluation of annotations and a free-threaded build option.",
+  "content": "What's new in Python 3.14 (synthetic mirror). Highlights: template string literals (t-strings, PEP 750); deferred evaluation of annotations (PEP 649); official support for the free-threaded build; a new compression.zstd module; improved error messages."
+}

@@ -1,6 +1,7 @@
 """Short-term and long-term memory (PRD FR-14, FR-16).
 
-* Short-term memory is the run's conversation (the message list held by the agent loop).
+* Short-term memory is the conversation: the message list the agent loop carries from turn to
+  turn. `ConversationStore` keeps it per session so a conversation can continue across runs.
 * Long-term memory is a persistent SQLite store. Every write goes through ONE function,
   `LongTermMemory.write_memory()`, which carries source + trust metadata and passes the
   `before_memory_write` extension point.
@@ -22,7 +23,36 @@ CREATE TABLE IF NOT EXISTS memories (
     id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT NOT NULL, source TEXT NOT NULL,
     trust_level TEXT, run_id TEXT, task_id TEXT, created_at TEXT, metadata_json TEXT
 );
+CREATE TABLE IF NOT EXISTS conversations (
+    session_id TEXT PRIMARY KEY, model TEXT, messages_json TEXT NOT NULL, updated_at TEXT
+);
 """
+
+
+class ConversationStore:
+    """Short-term memory per session: the conversation messages (FR-14)."""
+
+    def __init__(self, conn: sqlite3.Connection, lock: threading.Lock):
+        self._conn, self._lock = conn, lock
+
+    def get(self, session_id: str) -> list[dict]:
+        with self._lock:
+            row = self._conn.execute("SELECT messages_json FROM conversations WHERE session_id=?", [session_id]).fetchone()
+        return json.loads(row[0]) if row else []
+
+    def save(self, session_id: str, messages: list[dict], model: str = "") -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO conversations (session_id, model, messages_json, updated_at) VALUES (?,?,?,?) "
+                "ON CONFLICT(session_id) DO UPDATE SET model=excluded.model, messages_json=excluded.messages_json, "
+                "updated_at=excluded.updated_at",
+                [session_id, model, json.dumps(messages, default=str), now_iso()],
+            )
+            self._conn.commit()
+
+    def exists(self, session_id: str) -> bool:
+        with self._lock:
+            return self._conn.execute("SELECT 1 FROM conversations WHERE session_id=?", [session_id]).fetchone() is not None
 
 
 class LongTermMemory:
@@ -33,6 +63,7 @@ class LongTermMemory:
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        self.conversations = ConversationStore(self._conn, self._lock)
 
     def reset(self) -> None:
         with self._lock:

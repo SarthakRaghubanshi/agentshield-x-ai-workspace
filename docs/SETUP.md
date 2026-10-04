@@ -9,7 +9,19 @@ There are two ways to run the AI Workspace:
 
 Either way you need **at least one model**. Pick one or more:
 
-* **Ollama** (free, local, simplest): `qwen2.5:7b` is the recommended default because it handles tool calls reliably. `llama3.1:8b` also works. Small models (≤3B) often call tools badly (PRD risk table).
+* **Ollama** (free, local, simplest). Models that support tool calling and are registered in `config/models.yaml`:
+
+  | Ollama tag | Download | Notes |
+  |---|---|---|
+  | `qwen3:4b-instruct` | 2.5 GB | **default**, the best small model for tool calls; laptop with 8 GB RAM, no GPU needed |
+  | `qwen2.5:3b` | 1.9 GB | reliable, fast |
+  | `llama3.2:3b` | 2.0 GB | alternative family |
+  | `qwen3:1.7b` | 1.4 GB | smallest that is usable |
+  | `qwen2.5:1.5b` | 1.0 GB | smoke tests only |
+  | `qwen2.5:7b` / `llama3.1:8b` | 4.7 / 4.9 GB | better quality; GPU recommended |
+
+  Very small models (≤2B) call tools less reliably (PRD risk table). Use them to check the
+  plumbing, not for experiments.
 * **vLLM / llama.cpp** (free, local, for the college GPU server)
 * **Cloud API** (optional, paid, capped at USD 2 per process): Gemini, OpenAI or Anthropic
 
@@ -59,7 +71,7 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 Get a model (Ollama runs in the background after installation; check the tray icon):
 
 ```powershell
-ollama pull qwen2.5:7b
+ollama pull qwen3:4b-instruct
 ```
 
 Optional cloud keys:
@@ -123,7 +135,7 @@ Start Ollama and get a model. On Apple Silicon Ollama uses the GPU (Metal) autom
 
 ```bash
 brew services start ollama          # or open the Ollama app
-ollama pull qwen2.5:7b
+ollama pull qwen3:4b-instruct
 ```
 
 Optional cloud keys:
@@ -189,7 +201,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-ollama pull qwen2.5:7b
+ollama pull qwen3:4b-instruct
 cp .env.example .env                # optional, for cloud keys
 python -m aiworkspace serve
 ```
@@ -220,7 +232,7 @@ sudo systemctl restart ollama
 ```bash
 echo "DOCKER_OLLAMA_API_BASE=http://ollama:11434" >> .env
 docker compose --profile ollama up --build -d
-docker compose exec ollama ollama pull qwen2.5:7b
+docker compose exec ollama ollama pull qwen3:4b-instruct
 ```
 
 **With an NVIDIA GPU** (install the
@@ -275,8 +287,8 @@ Restart the server after editing `.env`. Total paid spend per process is capped 
 With the virtual environment active:
 
 ```bash
-python -m aiworkspace tasks     # lists 16 tasks (9 benign, 7 attack)
-pytest -q                       # 16 passed, 2 skipped (the skipped ones need a real model)
+python -m aiworkspace tasks     # lists 23 tasks (16 benign, 7 attack)
+pytest -q                       # 26 passed, 2 skipped (the skipped ones need a real model)
 ```
 
 Then open <http://localhost:8000>. The header should read `sandbox: local · 16 tools`
@@ -287,12 +299,41 @@ Optional real-model test (PRD acceptance criterion 1):
 
 ```bash
 # macOS / Linux
-AIWORKSPACE_LIVE_MODELS=ollama-qwen2.5,gemini-flash pytest -q tests/test_live_model.py -s
+AIWORKSPACE_LIVE_MODELS=ollama-qwen3-4b,gemini-flash pytest -q tests/test_live_model.py -s
 ```
 ```powershell
 # Windows PowerShell
-$env:AIWORKSPACE_LIVE_MODELS="ollama-qwen2.5,gemini-flash"; pytest -q tests/test_live_model.py -s
+$env:AIWORKSPACE_LIVE_MODELS="ollama-qwen3-4b,gemini-flash"; pytest -q tests/test_live_model.py -s
 ```
+
+### Real-model checks on GitHub (no local GPU needed)
+
+The repository has a manual workflow that installs Ollama on a GitHub runner, pulls a small
+model, runs the live tests plus the whole task suite, and also runs a task inside Docker:
+
+```bash
+gh workflow run live-model.yml                                         # default: qwen2.5:1.5b
+gh workflow run live-model.yml -f model_id=ollama-qwen3-4b -f ollama_tag=qwen3:4b-instruct
+```
+
+Results (batch summary, `runs.csv`, `telemetry.db`) are attached to the run as an artifact.
+
+## PostgreSQL telemetry (optional)
+
+SQLite is the default. For large experiment volumes, store telemetry in PostgreSQL:
+
+```bash
+# any PostgreSQL 13+ server
+export TELEMETRY_DB_URL=postgresql://user:password@localhost:5432/telemetry      # Windows: $env:TELEMETRY_DB_URL="..."
+python -m aiworkspace serve
+
+# or the bundled container
+echo "TELEMETRY_DB_URL=postgresql://agentshield:agentshield@postgres:5432/telemetry" >> .env
+docker compose --profile postgres up --build
+```
+
+Tables are created automatically. Long-term memory and conversations stay in SQLite
+(`runtime/memory.db`).
 
 ## Updating
 
@@ -306,14 +347,14 @@ docker compose up --build                # Docker option
 
 | Symptom | Fix |
 |---|---|
-| Model greyed out: *endpoint … not reachable or model not pulled* | Start Ollama (`ollama serve` / the app / `systemctl start ollama`) and run `ollama pull qwen2.5:7b`. Then reload the page. |
+| Model greyed out: *endpoint … not reachable or model not pulled* | Start Ollama (`ollama serve` / the app / `systemctl start ollama`) and run `ollama pull qwen3:4b-instruct`. Then reload the page. |
 | Model greyed out: *set GEMINI_API_KEY* | Put the key in `.env` and restart the server. |
 | `pip install` fails building faiss / tokenizers | You are probably on Python 3.14. Create the venv with 3.12 or 3.13. |
 | PowerShell: *running scripts is disabled* | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
 | `address already in use` on port 8000 | `python -m aiworkspace serve --port 8080`, or in Docker change `"8000:8000"` to `"8080:8000"`. |
 | Docker on Linux: *permission denied … docker.sock* | `sudo usermod -aG docker $USER`, then log out and back in. |
 | Docker: model unreachable from the container | Use `host.docker.internal` or `http://ollama:11434` in the `DOCKER_*` variables, never `localhost`. On Linux, set `OLLAMA_HOST=0.0.0.0` (see above). |
-| Runs end with *model error … tool* | The model does not support tool calling. Use `qwen2.5:7b`, `llama3.1:8b` or a cloud model; for vLLM add the tool-call flags. |
+| Runs end with *model error … tool* | The model does not support tool calling. Use `qwen3:4b-instruct`, `qwen2.5:7b`, `llama3.1:8b` or a cloud model; for vLLM add the tool-call flags. |
 | Runs end with *maximum number of steps reached* | The model looped. Raise `agent.max_steps` in `config/workspace.yaml` or use a stronger model. |
 | *BudgetExceededError* | The paid-API cap was reached. Raise `budget.max_usd` deliberately, or restart the process. |
 | Start from scratch | Stop the server, delete the `runtime/` folder (local) or run `docker compose down -v` (Docker). |

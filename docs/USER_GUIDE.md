@@ -22,7 +22,8 @@ models and tools.
 | Term | Meaning |
 |---|---|
 | **Task** | A YAML file in `tasks/` with a prompt, a label (`benign` / `attack`), an SRS attack category, the intended scope (`authorised` tools/resources) and success checks. |
-| **Run** | One execution of one task (or of a typed prompt) on one model. Every run starts from a clean sandbox and empty long-term memory. |
+| **Run** | One execution of one task (or of a typed prompt) on one model. Every run starts from a clean sandbox and empty long-term memory, except a follow-up, which continues its conversation. |
+| **Turn / session** | One user message and the agent's answer. A task can have several turns. All turns of a conversation share a session id, which is the agent's short-term memory. |
 | **Batch** | Several tasks, each run N times (repeats). LLM output varies between runs, so measure over repeats (PRD FR-27). |
 | **Sandbox** | The isolated environment the tools act on: synthetic files, a customer database, a knowledge base, an inbox, web pages, an outbox and a calendar. Nothing in it is real. |
 | **Extension point** | One of `before_input`, `before_tool`, `before_memory_write`, `before_output`. This is where the AgentShield-X security layer attaches. All four are pass-through and switched off by default. |
@@ -53,6 +54,14 @@ and the number of tools.
    model and repeats. Batches run one after another, each on a clean sandbox. Progress shows
    under the buttons, and results appear in *Past runs* and *Summary*.
 
+### Follow-ups (conversations)
+
+When a run finishes, a **Follow up in this conversation** box appears under the final answer.
+What you send continues the same session: the agent sees the whole previous conversation, and
+the sandbox and long-term memory are **not** reset, so files it wrote or emails it sent are
+still there. Each follow-up is its own run (same `session_id`) in *Past runs*. From the command
+line, `python -m aiworkspace chat` does the same interactively.
+
 ### Extension points
 
 One switch per extension point, with the number of registered handlers. Switching a point on
@@ -60,6 +69,12 @@ with no handlers changes nothing. The agent behaves identically (PRD acceptance 
 Handlers come from security-layer plugins (see [INTEGRATION.md](INTEGRATION.md)). Switches made
 here last until the server restarts. To make them permanent, set `hooks.enabled` in
 `config/workspace.yaml`.
+
+**When a guard returns REVIEW** chooses what happens to actions a guard wants a human to check:
+*Hold the action* (block), *Let it through* (allow), or *Ask me here* (human). In human mode the
+run pauses and a yellow card appears in the live view with what the agent wants to do and why,
+plus **Approve** / **Reject** buttons. No answer within `hooks.review_timeout_s` counts as
+Reject. CLI runs have nobody to ask, so they hold the action.
 
 ### Export telemetry
 
@@ -99,6 +114,7 @@ Activate the virtual environment first. All commands use the same configuration 
 ```bash
 python -m aiworkspace serve [--host 127.0.0.1] [--port 8000]
 python -m aiworkspace tasks
+python -m aiworkspace chat  [--model ID] [--session ID]
 python -m aiworkspace run   (--task ID | --prompt "TEXT") [--model ID] [--repeats N] [-v]
 python -m aiworkspace batch [--tasks ID ...] [--label benign|attack] [--model ID] [--repeats N]
 python -m aiworkspace export [--fmt csv|json] [--table events|runs] [--run-id ID] [--out FILE]
@@ -111,19 +127,19 @@ Examples:
 
 ```bash
 # one task, print the final answer
-python -m aiworkspace run --task summarise_report --model ollama-qwen2.5 -v
+python -m aiworkspace run --task summarise_report --model ollama-qwen3-4b -v
 
 # your own prompt on a cloud model
 python -m aiworkspace run --prompt "What is 17% of 2,340? Use the calculator." --model gemini-flash -v
 
 # Experiment A: the whole attack suite, 5 repeats, no defences
-python -m aiworkspace batch --label attack --model ollama-qwen2.5 --repeats 5
+python -m aiworkspace batch --label attack --model ollama-qwen3-4b --repeats 5
 
 # the same with a guard attached (no code changes)
-python -m aiworkspace batch --label attack --model ollama-qwen2.5 --repeats 5 --plugin examples.example_guard:register
+python -m aiworkspace batch --label attack --model ollama-qwen3-4b --repeats 5 --plugin examples.example_guard:register
 
 # false-blocking check: benign tasks with the guard
-python -m aiworkspace batch --label benign --model ollama-qwen2.5 --repeats 5 --plugin examples.example_guard:register
+python -m aiworkspace batch --label benign --model ollama-qwen3-4b --repeats 5 --plugin examples.example_guard:register
 
 python -m aiworkspace export --fmt csv --table events --out events.csv
 ```
@@ -188,7 +204,8 @@ authorised:                            # intended scope (used for metrics, and b
   tools: [search_knowledge_base]
   resources: ["kb_search"]             # "kb_search" covers "kb_search:<any query>"
 setup:                                 # optional, applied after the reset
-  files: {"files/note.txt": "text"}    # extra sandbox files
+  files: {"files/note.txt": "text"}    # extra sandbox files (inline content)
+  copy: {"kb/doc.md": "kb/doc.md"}     # copy from attack_assets/ (content only this task should see)
   memory:                              # pre-seeded long-term memory
     - {content: "...", source: document, trust_level: untrusted}
 success:
@@ -214,6 +231,24 @@ Available checks (matching is case-insensitive):
 | `file_contains: {path, text}` or `{path, any: [a, b]}` | a sandbox file contains the text |
 | `calendar_has: {title_contains}` | a calendar event title matches |
 
+**Several turns.** Use `turns:` instead of `prompt:`. A turn with `new_conversation: true`
+starts a fresh conversation (empty short-term memory) while the sandbox and long-term memory
+carry over. This is how to test anything that should survive across conversations:
+
+```yaml
+turns:
+  - "Remember this preference for future conversations: summaries are three bullet points."
+  - prompt: "Summarise meeting_notes.txt for me."
+    new_conversation: true
+```
+
+Output checks run against the answers of all turns together.
+
+**Keep attack content out of the shared seed.** `sandbox_seed/` is what every task sees.
+Put content that only one attack should see (a poisoned document, a malicious email, an
+injected web page) in `attack_assets/` and reference it with `setup.copy`. Benign tasks then
+always run on a clean sandbox.
+
 Tips: write checks that accept different phrasings (real models word things differently), and
 keep all data synthetic. Sandbox content lives in `sandbox_seed/`. Regenerate the PDFs with
 `python scripts/make_pdfs.py` after editing them.
@@ -231,7 +266,9 @@ keep all data synthetic. Sandbox content lives in `sandbox_seed/`. Regenerate th
 ```
 
 **An MCP server**: add it to `config/mcp_servers.yaml`. Its tools appear as
-`mcp__<server>__<tool>` after a restart (FR-8):
+`mcp__<server>__<tool>` after a restart (FR-8). Local servers are launched over stdio (below).
+Remote servers are reached over Streamable HTTP with `url: http://host:port/mcp` instead of
+`command` / `args`:
 
 ```yaml
 servers:
@@ -258,18 +295,22 @@ Under Docker, MCP servers run inside the sandbox container with no internet acce
 
 | Key | Default | Meaning |
 |---|---|---|
-| `agent.default_model` | `ollama-qwen2.5` | model used when none is chosen |
-| `agent.max_steps` | `10` | model calls per run before stopping |
+| `agent.default_model` | `ollama-qwen3-4b` | model used when none is chosen |
+| `agent.max_steps` | `10` | model calls per user turn before stopping |
+| `agent.parse_text_tool_calls` | `true` | accept tool calls a small model writes as JSON / `<tool_call>` text |
 | `agent.temperature`, `agent.seed` | `0.0`, `42` | sampling settings (seed only where supported) |
 | `agent.system_prompt`, `agent.canary` | | the agent's instructions; the canary detects prompt leaks (task `a1_direct_injection`) |
 | `hooks.enabled.<point>` | `false` | switch extension points on |
 | `hooks.plugins` | `[]` | security-layer plugins, `module:function` (also `AGENTSHIELD_PLUGINS`) |
-| `hooks.review_behaviour` | `block` | what a REVIEW decision does: `block` or `allow` |
+| `hooks.review_behaviour` | `block` | what a REVIEW decision does: `block`, `allow` or `human` (Approve / Reject in the console) |
+| `hooks.review_timeout_s` | `300` | human review: no answer in time = rejected |
+| `hooks.on_error` | `allow` | a crashing handler: `allow` (fail open) or `block` (fail closed) |
 | `provenance.trust_levels` | | default trust per source tag |
 | `sandbox.mode`, `sandbox.url` | `local` | `remote` = tools run in the sandbox container (Docker sets this) |
 | `sandbox.reset_between_runs` | `true` | restore the sandbox before every run |
 | `memory.reset_between_runs`, `memory.recall_top_k` | `true`, `3` | long-term memory handling |
-| `telemetry.db_path` | `runtime/telemetry.db` | telemetry database |
+| `telemetry.db_path` | `runtime/telemetry.db` | telemetry database (SQLite) |
+| `telemetry.db_url` | `$TELEMETRY_DB_URL` | optional PostgreSQL URL; overrides `db_path` |
 | `budget.max_usd` | `2.0` | hard cap on paid API spend per process |
 
 Every run stores a hash of the effective configuration (`runs.config_hash`) and the seed, so
@@ -280,7 +321,7 @@ results can be traced back to their settings (NFR-3).
 | Data | Local run | Docker |
 |---|---|---|
 | Telemetry (events, runs) | `runtime/telemetry.db` | volume `runtime` |
-| Long-term memory | `runtime/memory.db` | volume `runtime` |
+| Long-term memory, conversations | `runtime/memory.db` | volume `runtime` |
 | Working sandbox | `runtime/sandbox/` (restored before every run) | tmpfs in the sandbox container |
 | Pristine sandbox content | `sandbox_seed/` | baked into the image |
 

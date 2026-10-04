@@ -2,6 +2,7 @@
 
     python -m aiworkspace serve                                   # UI + API on http://localhost:8000
     python -m aiworkspace tasks                                   # list tasks
+    python -m aiworkspace chat --model ollama-qwen3-4b            # interactive conversation
     python -m aiworkspace run --task summarise_report --model ollama-qwen2.5
     python -m aiworkspace run --prompt "What is 2+2? Use the calculator." --model gemini-flash
     python -m aiworkspace batch --label attack --model ollama-qwen2.5 --repeats 3
@@ -50,6 +51,30 @@ async def _run(args) -> int:
     return 0
 
 
+async def _chat(args) -> int:
+    """Interactive conversation with the agent (short-term memory across turns)."""
+    ws = _workspace(args)
+    await ws.start()
+    session_id = args.session
+    print(f"Chatting with {args.model or ws.cfg['agent']['default_model']}. Empty line or Ctrl+C to quit.")
+    try:
+        while True:
+            try:
+                prompt = input("\nyou> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                break
+            if not prompt:
+                break
+            run = await ws.run(prompt=prompt, model=args.model, session_id=session_id)
+            session_id = run["session_id"]
+            print(f"\nagent> {run['final_output']}\n   [{run['run_id']} - {run['status']} - {run['steps']} steps]")
+    finally:
+        await ws.stop()
+    if session_id:
+        print(f"\nsession: {session_id}  (resume with --session {session_id})")
+    return 0
+
+
 async def _batch(args) -> int:
     ws = _workspace(args)
     await ws.start()
@@ -82,6 +107,12 @@ def main(argv=None) -> int:
     s.add_argument("--port", type=int, default=8000)
 
     sub.add_parser("tasks", help="list task files")
+
+    c = sub.add_parser("chat", help="interactive conversation with the agent")
+    c.add_argument("--model", default=None)
+    c.add_argument("--session", default=None, help="continue an earlier session id")
+    c.add_argument("--plugin", action="append")
+    c.add_argument("--enable", action="append", choices=["before_input", "before_tool", "before_memory_write", "before_output"])
 
     for name in ("run", "batch"):
         r = sub.add_parser(name)
@@ -118,6 +149,8 @@ def main(argv=None) -> int:
         return 0
     if args.cmd == "run":
         return asyncio.run(_run(args))
+    if args.cmd == "chat":
+        return asyncio.run(_chat(args))
     if args.cmd == "batch":
         return asyncio.run(_batch(args))
     if args.cmd == "export":

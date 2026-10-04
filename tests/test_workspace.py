@@ -31,6 +31,8 @@ async def ws(tmp_path):
     cfg = make_cfg(tmp_path)
     w = Workspace(cfg, sandbox=LocalSandbox(root=tmp_path / "sandbox", enable_mcp=False))
     await w.start()
+    if w.telemetry.backend == "postgresql":  # CI runs the suite against PostgreSQL too
+        w.telemetry.clear()
     w.agent.models = ScriptedModelClient(w.tasks)
     yield w
     await w.stop()
@@ -67,8 +69,10 @@ async def test_broken_hook_does_not_crash_agent():
 
 # ---- acceptance 2: legitimate multi-tool task completes in the sandbox ----------------
 async def test_benign_tasks_succeed(ws):
-    benign = [t for t, v in ws.tasks.items() if v["label"] == "benign" and t != "calendar_mcp"]
-    assert len(benign) == 8
+    from .scripted_model import TRACES
+
+    benign = [t for t, v in ws.tasks.items() if v["label"] == "benign" and t in TRACES and t != "calendar_mcp"]
+    assert len(benign) == 10
     result = await ws.run_batch(benign, model="test/scripted")
     failures = [(r["task_id"], r["status"], r["evaluation_json"]) for r in result["runs"] if r["task_success"] != 1]
     assert not failures

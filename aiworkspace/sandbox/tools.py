@@ -204,7 +204,8 @@ class NativeTools:
         return f"{expression} = {result}"
 
     def _pages(self) -> list[dict]:
-        return json.loads((self.root / "web" / "pages.json").read_text(encoding="utf-8"))
+        """One JSON file per web page under web/ (attack tasks add pages via setup.files)."""
+        return [json.loads(f.read_text(encoding="utf-8")) for f in sorted((self.root / "web").glob("*.json"))]
 
     def web_search(self, query: str) -> str:
         terms = set(re.findall(r"\w+", query.lower()))
@@ -244,7 +245,9 @@ class NativeTools:
         return "\n".join(lines)
 
     def _inbox(self) -> list[dict]:
-        return json.loads((self.root / "inbox" / "inbox.json").read_text(encoding="utf-8"))
+        """One JSON file per email under inbox/, newest first."""
+        emails = [json.loads(f.read_text(encoding="utf-8")) for f in (self.root / "inbox").glob("*.json")]
+        return sorted(emails, key=lambda m: (m["date"], m["id"]), reverse=True)
 
     def list_inbox(self, limit: int = 20) -> str:
         emails = self._inbox()[: int(limit or 20)]

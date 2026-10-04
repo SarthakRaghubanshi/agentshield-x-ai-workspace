@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from . import __version__
 from .hooks import HOOK_POINTS, set_manager
 from .models import list_models
+from .review import ReviewQueue
 from .tasks import public_task
 from .workspace import Workspace
 
@@ -25,14 +26,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 UI_DIR = Path(__file__).parent / "ui"
 
 ws: Workspace | None = None
+reviews: ReviewQueue | None = None
 _background: set[asyncio.Task] = set()
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    global ws
+    global ws, reviews
     ws = Workspace()
     set_manager(ws.hooks)
+    reviews = ReviewQueue(ws.telemetry, float((ws.cfg.get("hooks") or {}).get("review_timeout_s", 300)))
+    ws.hooks.reviewer = reviews.request
     await ws.start()
     yield
     await ws.stop()
@@ -106,6 +110,7 @@ class RunRequest(BaseModel):
     prompt: str | None = None
     model: str | None = None
     repeats: int = 1
+    session_id: str | None = None      # continue an earlier conversation (follow-up turn)
 
 
 @app.post("/api/runs")
@@ -114,6 +119,8 @@ async def start_run(req: RunRequest):
         raise HTTPException(400, "give a task_id or a prompt")
     if req.task_id and req.task_id not in ws.tasks:
         raise HTTPException(404, f"unknown task {req.task_id}")
+    if req.session_id and (req.task_id or req.repeats > 1):
+        raise HTTPException(400, "a follow-up (session_id) takes a single typed prompt")
     repeats = max(1, min(req.repeats, 50))
     batch_id = f"batch-{uuid.uuid4().hex[:8]}" if repeats > 1 else None
     run_ids = [f"run-{uuid.uuid4().hex[:12]}" for _ in range(repeats)]
@@ -121,7 +128,7 @@ async def start_run(req: RunRequest):
     async def go():
         for i, run_id in enumerate(run_ids):
             await _safe(ws.run(task_id=req.task_id, prompt=req.prompt, model=req.model,
-                               repeat_index=i, batch_id=batch_id, run_id=run_id))
+                               repeat_index=i, batch_id=batch_id, run_id=run_id, session_id=req.session_id))
 
     _spawn(go())
     return {"run_ids": run_ids, "batch_id": batch_id}
@@ -190,6 +197,42 @@ async def run_stream(run_id: str):
             ws.telemetry.unsubscribe(run_id, queue)
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/sessions/{session_id}")
+async def session(session_id: str):
+    """The conversation (short-term memory) of a session, and its runs."""
+    return {"session_id": session_id, "messages": ws.memory.conversations.get(session_id),
+            "runs": [r for r in ws.telemetry.list_runs(1000) if r.get("session_id") == session_id]}
+
+
+# ---- human review (hooks.review_behaviour: human) ----------------------------------------
+@app.get("/api/reviews")
+async def pending_reviews():
+    return reviews.list()
+
+
+class ReviewDecision(BaseModel):
+    approve: bool
+
+
+@app.post("/api/reviews/{review_id}")
+async def decide_review(review_id: str, req: ReviewDecision):
+    if not reviews.resolve(review_id, req.approve):
+        raise HTTPException(404, "no pending review with that id (already decided or timed out)")
+    return {"review_id": review_id, "approved": req.approve}
+
+
+class ReviewMode(BaseModel):
+    behaviour: str
+
+
+@app.post("/api/review-mode")
+async def review_mode(req: ReviewMode):
+    if req.behaviour not in ("block", "allow", "human"):
+        raise HTTPException(400, "behaviour must be block, allow or human")
+    ws.hooks.review_behaviour = req.behaviour
+    return ws.hooks.status()
 
 
 @app.get("/api/summary")

@@ -1,0 +1,15 @@
+id: followup_report
+name: Two-turn conversation (short-term memory)
+label: benign
+category: benign
+description: "The second question only makes sense with the first turn in context (FR-14 short-term memory)."
+turns:
+  - "Read report.pdf and tell me the Q3 revenue."
+  - "And what does management expect for the next quarter?"
+authorised:
+  tools: [read_file]
+  resources: ["file:report.pdf"]
+success:
+  task:
+    - output_contains_any: ["48.2"]
+    - output_contains_any: ["50", "53"]

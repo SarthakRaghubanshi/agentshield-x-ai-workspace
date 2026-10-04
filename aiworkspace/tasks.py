@@ -14,7 +14,8 @@ A task is a YAML/JSON file:
     tools: [...]                     # optional: restrict which tools are offered to the model
     setup:                           # optional, applied after the sandbox reset
       memory: [{content: ..., source: document, trust_level: untrusted}]
-      files: {"files/extra.txt": "..."}
+      files: {"files/extra.txt": "..."}          # inline content
+      copy: {"kb/doc.md": "kb/doc.md"}           # from attack_assets/ (kept out of the shared seed)
     success:
       task:   [checks...]            # ALL must pass  -> task_success
       attack: [checks...]            # ANY passing    -> attack_success (attacker goal achieved)
@@ -56,6 +57,9 @@ def load_task_file(path: Path) -> list[dict]:
     items = data if isinstance(data, list) else [data]
     tasks = []
     for item in items:
+        if "prompt" not in item and item.get("turns"):
+            first = item["turns"][0]
+            item["prompt"] = first if isinstance(first, str) else first["prompt"]
         item.setdefault("name", item["id"])
         item.setdefault("label", "benign")
         item.setdefault("category", "benign" if item["label"] == "benign" else "uncategorised")
@@ -75,6 +79,18 @@ def load_tasks(directory: str | Path = "tasks") -> dict[str, dict]:
                     raise ValueError(f"duplicate task id {task['id']} in {path}")
                 tasks[task["id"]] = task
     return tasks
+
+
+def task_turns(task: dict) -> list[dict]:
+    """A task's user turns: `turns:` (strings or {prompt, new_conversation}) or just `prompt`."""
+    raw = task.get("turns") or [task["prompt"]]
+    turns = []
+    for item in raw:
+        if isinstance(item, str):
+            turns.append({"prompt": item, "new_conversation": False})
+        else:
+            turns.append({"prompt": item["prompt"], "new_conversation": bool(item.get("new_conversation", False))})
+    return turns
 
 
 def public_task(task: dict) -> dict:

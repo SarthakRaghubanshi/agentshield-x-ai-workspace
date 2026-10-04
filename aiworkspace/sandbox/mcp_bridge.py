@@ -32,14 +32,19 @@ class MCPBridge:
     async def start(self) -> None:
         self._stack = AsyncExitStack()
         for name, cfg in self.servers_cfg.items():
-            command = cfg["command"]
-            if command in ("python", "python3"):
-                command = sys.executable  # use the workspace interpreter
-            env = dict(os.environ) | {k: str(v) for k, v in (cfg.get("env") or {}).items()}
-            env["SANDBOX_ROOT"] = str(self.sandbox_root)
-            params = StdioServerParameters(command=command, args=list(cfg.get("args", [])), env=env, cwd=str(ROOT))
+            if cfg.get("url"):
+                # Remote server over Streamable HTTP, e.g. http://notes-mcp:9000/mcp
+                target = cfg["url"]
+            else:
+                # Local server launched as a subprocess and spoken to over stdio.
+                command = cfg["command"]
+                if command in ("python", "python3"):
+                    command = sys.executable  # use the workspace interpreter
+                env = dict(os.environ) | {k: str(v) for k, v in (cfg.get("env") or {}).items()}
+                env["SANDBOX_ROOT"] = str(self.sandbox_root)
+                target = StdioServerParameters(command=command, args=list(cfg.get("args", [])), env=env, cwd=str(ROOT))
             try:
-                client = await self._stack.enter_async_context(Client(params, read_timeout_seconds=30))
+                client = await self._stack.enter_async_context(Client(target, read_timeout_seconds=30))
                 listing = await client.list_tools()
             except Exception as exc:
                 log.exception("MCP server %s failed to start", name)

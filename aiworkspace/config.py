@@ -57,7 +57,7 @@ def deep_merge(base: dict, override: dict | None) -> dict:
 
 @lru_cache(maxsize=1)
 def workspace_config() -> dict:
-    cfg = _load_yaml("workspace.yaml")
+    cfg = expand_env(_load_yaml("workspace.yaml"))
     # Environment overrides that matter inside Docker.
     if os.environ.get("SANDBOX_MODE"):
         cfg.setdefault("sandbox", {})["mode"] = os.environ["SANDBOX_MODE"]
