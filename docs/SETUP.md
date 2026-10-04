@@ -288,7 +288,7 @@ With the virtual environment active:
 
 ```bash
 python -m aiworkspace tasks     # lists 23 tasks (16 benign, 7 attack)
-pytest -q                       # 26 passed, 2 skipped (the skipped ones need a real model)
+pytest -q                       # 30 passed, 2 skipped (the skipped ones need a real model)
 ```
 
 Then open <http://localhost:8000>. The header should read `sandbox: local · 16 tools`
