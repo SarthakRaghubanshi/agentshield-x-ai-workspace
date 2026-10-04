@@ -1,0 +1,14 @@
+# Optional: give the bundled Ollama container an NVIDIA GPU (Linux, or Windows with WSL2).
+# Needs the NVIDIA Container Toolkit on the host.
+#
+#   OLLAMA_API_BASE=http://ollama:11434 \
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile ollama up --build
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

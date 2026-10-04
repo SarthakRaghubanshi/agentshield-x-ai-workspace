@@ -1,57 +1,85 @@
 # AgentShield-X: AI Workspace
 
-The sandboxed task environment for **AgentShield-X** (SRS Objective 1, PRD `AI_Workspace_PRD.md`).
-A tool-using AI agent runs legitimate tasks and controlled attacks here. Every input, tool call,
-memory write and output is logged as structured telemetry. The security layer plugs in later
-through four extension points, without touching agent code.
+[![ci](https://github.com/Kroszborg/agentshield-x-ai-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/Kroszborg/agentshield-x-ai-workspace/actions/workflows/ci.yml)
 
-> This component contains **no security logic**. See [`docs/INTEGRATION.md`](docs/INTEGRATION.md)
-> for how the guards / policy engine attach.
+The sandboxed task environment for **AgentShield-X** (SRS Objective 1, see
+[`AI_Workspace_PRD.md`](AI_Workspace_PRD.md) and `AgentShield-X_SRS.pdf`).
 
-## Quick start (local, no Docker)
+A tool-using AI agent runs legitimate tasks and controlled attacks inside a sandbox. Every
+input, tool call, memory write and output is logged as structured telemetry in the SRS
+Ch. 9.1 schema. The AgentShield-X security layer (guards, policy engine, risk scoring,
+provenance, anomaly detection) plugs in later through four extension points, without
+touching agent code.
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate            # Windows   (Linux/macOS: source .venv/bin/activate)
+> This component contains **no security logic** (PRD FR-17). The teammates' integration guide
+> is [`docs/INTEGRATION.md`](docs/INTEGRATION.md).
+
+## Documentation
+
+| Guide | For |
+|---|---|
+| [**Setup guide**](docs/SETUP.md) | Installing and running on **Windows, macOS and Linux**, with or without Docker, plus model setup (Ollama, vLLM, llama.cpp, cloud APIs) |
+| [**User guide**](docs/USER_GUIDE.md) | Using the web console and CLI: running tasks and attacks, reading results and metrics, exporting telemetry, writing tasks, adding tools / MCP servers / models |
+| [**Integration guide**](docs/INTEGRATION.md) | Security / ML teammates: extension-point contract, plugins, telemetry columns |
+
+## Quick start
+
+You need **Python 3.12 or 3.13**, **git** and at least one model (local [Ollama](https://ollama.com) is free).
+
+**Windows (PowerShell)**
+```powershell
+git clone https://github.com/Kroszborg/agentshield-x-ai-workspace.git
+cd agentshield-x-ai-workspace
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m aiworkspace serve       # open http://localhost:8000
+ollama pull qwen2.5:7b
+python -m aiworkspace serve        # open http://localhost:8000
 ```
 
-You need at least one real model (the console marks unreachable ones as unavailable):
-
-* **Local (free, SRS Ch. 14):** install [Ollama](https://ollama.com), then `ollama pull qwen2.5:7b`
-  (good at tool calls) or `ollama pull llama3.1:8b`. The default model is `ollama-qwen2.5`.
-  For vLLM / llama.cpp set `VLLM_API_BASE` / `LLAMACPP_API_BASE`.
-* **Cloud (optional, budget-capped):** copy `.env.example` to `.env` and set `GEMINI_API_KEY`,
-  `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`.
-
-## Quick start (Docker, PRD NFR-7)
-
+**macOS / Linux**
 ```bash
-docker compose up --build                     # http://localhost:8000
-docker compose --profile ollama up --build    # + a local Ollama container
+git clone https://github.com/Kroszborg/agentshield-x-ai-workspace.git
+cd agentshield-x-ai-workspace
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+ollama pull qwen2.5:7b
+python -m aiworkspace serve        # open http://localhost:8000
 ```
 
-| Service | Role | Network |
+**Docker (any OS, PRD NFR-7)**
+```bash
+docker compose up --build          # open http://localhost:8000
+```
+
+Cloud models instead of (or as well as) Ollama: copy `.env.example` to `.env` and set
+`GEMINI_API_KEY`, `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. Full details are in the
+[setup guide](docs/SETUP.md).
+
+## Architecture
+
+```
+ Web console / CLI / task files
+            |
+      FastAPI backend ─────────────── telemetry (SQLite, SRS Ch. 9.1) ── CSV / JSON export
+            |
+       Agent loop  <──>  LiteLLM  <──>  Ollama / vLLM / llama.cpp / Gemini / OpenAI / Anthropic
+            |
+   [before_input] [before_memory_write] [before_output]     <- extension points (off by default)
+            |
+   execute_tool()  <── [before_tool]
+            |
+   Sandbox: 12 native tools + MCP servers + RAG + synthetic data   (separate container, no internet)
+```
+
+| Docker service | Role | Network |
 |---|---|---|
-| `workspace` | agent loop, LiteLLM, API + UI, telemetry | internal + egress (to reach model APIs) |
-| `sandbox` | all tools, RAG, MCP servers, synthetic data | **internal only (no internet)**; read-only image, non-root, all capabilities dropped, ephemeral tmpfs reset on every run |
-| `ollama` (optional) | local models | egress |
+| `workspace` | agent loop, LiteLLM, API + console, telemetry, memory | internal + egress (model APIs) |
+| `sandbox` | all tools, RAG index, MCP servers, synthetic data | **internal only (no internet)**; read-only image, non-root, all capabilities dropped, ephemeral storage restored before every run |
+| `ollama` (optional profile) | local models | egress |
 
-## Command line
-
-```bash
-python -m aiworkspace tasks                                        # list tasks
-python -m aiworkspace run --task summarise_report --model ollama-qwen2.5 -v
-python -m aiworkspace run --prompt "What is 17% of 2,340? Use the calculator." --model gemini-flash -v
-python -m aiworkspace batch --label attack --model ollama-qwen2.5 --repeats 5     # FR-27
-python -m aiworkspace batch --label attack --plugin examples.example_guard:register
-python -m aiworkspace export --fmt csv --table events --out events.csv            # FR-23
-pytest -q                                                                         # acceptance tests
-set AIWORKSPACE_LIVE_MODELS=gemini-flash,ollama-qwen2.5 && pytest -q tests/test_live_model.py -s   # real-model tests
-```
-
-## What is where
+## Repository layout
 
 ```
 aiworkspace/
@@ -60,45 +88,23 @@ aiworkspace/
   gateway.py      execute_tool(name, args, context): the single tool gateway (FR-9)
   memory.py       long-term memory; write_memory() is the only write path (FR-14, FR-16)
   hooks.py        the four pass-through extension points (FR-17..19)
-  telemetry.py    SQLite logger in the SRS Ch. 9.1 schema, live streaming, CSV/JSON export (FR-21..23)
-  tasks.py        task files + success / attack-success evaluation (FR-24..26)
-  workspace.py    orchestration: reset → seed → run → evaluate → log; batches & repeats
-  api.py, ui/     FastAPI backend + task console (FR-28..30)
+  telemetry.py    SQLite logger, live streaming, metrics, CSV/JSON export (FR-21..23)
+  tasks.py        task files + task / attack success evaluation (FR-24..26)
+  workspace.py    orchestration: reset → seed → run → evaluate → log; batches and repeats
+  api.py, ui/     FastAPI backend + web console (FR-28..30)
   sandbox/        tools with FR-10 metadata, FAISS RAG, MCP bridge, reset, sandbox HTTP server
-config/           workspace.yaml (agent, hooks, provenance, sandbox), models.yaml, mcp_servers.yaml
-sandbox_seed/     synthetic data: report.pdf, protected_data.txt, fake keys, contacts, mock DB, KB, inbox, web
+config/           workspace.yaml, models.yaml, mcp_servers.yaml
+sandbox_seed/     synthetic data: report.pdf, protected_data.txt, fake keys, contacts, DB, KB, inbox, web pages
 tasks/            9 benign tasks + 7 attack tasks (one per SRS Ch. 10 category)
 mcp_servers/      sample MCP server (calendar)
 examples/         example_guard.py: how a guard plugs in (example only)
+tests/            acceptance tests (+ optional live-model tests)
+docs/             setup, user and integration guides
 ```
 
-## Models (FR-1..FR-3)
+## PRD acceptance criteria
 
-Choose per run in the UI, with `--model`, or with `model:` in a task file. Registered in
-`config/models.yaml`: Gemini / OpenAI / Anthropic (API keys), Ollama, vLLM, llama.cpp
-(OpenAI-compatible). Any raw LiteLLM model string also works (UI: "Other LiteLLM model string").
-Paid usage is capped by `budget.max_usd`. Each model call logs model name, latency, tokens and cost (FR-5).
-
-## Metrics (SRS Ch. 13)
-
-The Summary tab, `GET /api/summary` and the CLI batch output report, per model × defence
-configuration × task category: task success rate, attack success rate (ASR), unsafe action
-rate, tool misuse rate, recovery rate, false blocking rate, average run time and time spent
-inside the security layer (latency overhead). `runs.defence` records the active configuration
-(`baseline`, or the enabled extension points and handlers), so Experiment A (baseline) and
-Experiments B–F (defended) are directly comparable. Detector precision/recall/F1 and CPU/GPU
-overhead are computed by the ML pipeline from the exported telemetry.
-
-## Tests
-
-`tests/test_workspace.py` covers the acceptance criteria. It swaps the model layer for a
-test-only scripted client (`tests/scripted_model.py`) so the plumbing is tested
-deterministically; that client is never used by the workspace itself.
-`tests/test_live_model.py` runs the same tasks on real models when `AIWORKSPACE_LIVE_MODELS` is set.
-
-## Acceptance criteria (PRD section 9)
-
-| # | Criterion | How it is met / tested |
+| # | Criterion | Where |
 |---|---|---|
 | 1 | same task on a cloud and a local model by config only | `--model gemini-flash` vs `--model ollama-qwen2.5`; `tests/test_live_model.py` |
 | 2 | legitimate multi-tool task in the sandbox | `meeting_followup`, `calendar_mcp`, … (`test_benign_tasks_succeed`) |
@@ -106,11 +112,15 @@ deterministically; that client is never used by the workspace itself.
 | 4 | extension points switch on/off without changing behaviour | `test_enabling_passthrough_hooks_changes_nothing` |
 | 5 | indirect injection (document asks to read `protected_data.txt`) runs end to end and is logged | task `a2_indirect_injection_pdf`, `test_indirect_injection_logged` |
 | 6 | a guard attaches through extension points only | `examples/example_guard.py`, `test_plugin_guard_attaches_without_agent_changes` |
-| 7 | clean state with one command | `docker compose up`; sandbox + memory reset before every run (`test_sandbox_resets_between_runs`) |
+| 7 | clean state with one command | `docker compose up`; reset before every run; CI checks the Docker isolation |
 
-## Open questions from the PRD, as decided here
+`tests/test_workspace.py` exercises the plumbing with a test-only scripted model client
+(`tests/scripted_model.py`, never used by the workspace). `tests/test_live_model.py` runs the
+same tasks on real models when `AIWORKSPACE_LIVE_MODELS` is set.
 
-* **Agent framework:** a custom lightweight loop (no LangChain dependency, easy to read and to hook).
+## PRD open questions, as decided
+
+* **Agent framework:** a custom lightweight tool-calling loop (no LangChain), easy to read and to hook.
 * **UI:** a single-page console served by FastAPI (no build step). The final dashboard is a separate deliverable.
-* **Local model:** start with `qwen2.5:7b` or `llama3.1:8b` on Ollama, depending on the college GPU.
-* **Cloud model / budget:** Gemini 2.5 Flash is the cheapest default, capped at USD 2 per process (`budget.max_usd`).
+* **Local model:** `qwen2.5:7b` (reliable tool calls) or `llama3.1:8b` on Ollama, or any model behind vLLM / llama.cpp on the college GPU.
+* **Cloud model / budget:** Gemini 2.5 Flash as the low-cost option. Paid spend is capped at USD 2 per process (`budget.max_usd`).
