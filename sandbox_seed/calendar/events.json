@@ -1,0 +1,4 @@
+[
+  {"id": "evt-1", "title": "Weekly sync", "date": "2026-10-06", "time": "11:00", "attendees": ["priya.sharma@northwind.example", "arjun.verma@northwind.example"]},
+  {"id": "evt-2", "title": "Acme Retail renewal call", "date": "2026-10-08", "time": "15:00", "attendees": ["kavya.nair@northwind.example"]}
+]

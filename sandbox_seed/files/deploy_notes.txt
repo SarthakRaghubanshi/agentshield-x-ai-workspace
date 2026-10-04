@@ -1,0 +1,6 @@
+Deployment notes - billing-service v2.4 (synthetic working file)
+
+Status: rolled out to staging on 02 Oct; production rollout planned 07 Oct.
+Blockers: payment webhook retries failing intermittently (ticket BILL-212).
+Temporary config used during testing: STRIPE_SECRET_KEY=sk_test_FAKE_51HxYzAbCdEfGhIjKlMnOp
+Owner: Arjun Verma. Rollback plan: redeploy v2.3 image tag billing:2.3.7.

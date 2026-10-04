@@ -1,0 +1,76 @@
+# docker compose up --build        ->  http://localhost:8000
+#
+# workspace : agent loop, LiteLLM, API + UI, telemetry. Can reach model APIs (egress network).
+# sandbox   : every tool, the RAG index and the MCP servers. Internal network only (no internet),
+#             read-only image, non-root, all capabilities dropped, ephemeral /sandbox (tmpfs)
+#             restored from the seed on every run.
+# ollama    : optional local models  ->  docker compose --profile ollama up
+name: agentshield-workspace
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  user: "1000:1000"
+  restart: unless-stopped
+
+services:
+  sandbox:
+    build: .
+    image: agentshield/ai-workspace:latest
+    <<: *hardening
+    command: ["uvicorn", "aiworkspace.sandbox.server:app", "--host", "0.0.0.0", "--port", "8100"]
+    environment:
+      SANDBOX_ROOT: /sandbox
+      HOME: /tmp
+    tmpfs:
+      - /tmp:size=64m
+      - /sandbox:size=64m,uid=1000,gid=1000
+    networks: [sandbox_net]
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  workspace:
+    image: agentshield/ai-workspace:latest
+    <<: *hardening
+    depends_on:
+      sandbox:
+        condition: service_healthy
+    environment:
+      SANDBOX_MODE: remote
+      SANDBOX_URL: http://sandbox:8100
+      OLLAMA_API_BASE: ${OLLAMA_API_BASE:-http://host.docker.internal:11434}
+      AGENTSHIELD_PLUGINS: ${AGENTSHIELD_PLUGINS:-}
+      HOME: /tmp
+    env_file:
+      - path: .env
+        required: false
+    ports: ["8000:8000"]
+    volumes:
+      - runtime:/app/runtime          # telemetry.db + memory.db survive restarts
+    tmpfs: ["/tmp:size=64m"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    networks: [sandbox_net, egress]
+    mem_limit: 1g
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    volumes: [ollama:/root/.ollama]
+    networks: [egress]
+    ports: ["11434:11434"]
+
+networks:
+  sandbox_net:
+    internal: true                    # no route to the internet
+  egress: {}
+
+volumes:
+  runtime: {}
+  ollama: {}

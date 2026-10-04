@@ -1,0 +1,44 @@
+# Model registry (FR-1..FR-3). Every entry is called through LiteLLM (FR-4).
+# Pick a model per task in the UI / CLI / task file - no code change needed.
+# Any raw LiteLLM model string (e.g. "groq/llama-3.1-8b-instant") also works without an entry here.
+models:
+  # --- Local models via OpenAI-compatible endpoints (FR-2) ---
+  - id: ollama-llama3.1
+    label: "Ollama: llama3.1:8b"
+    model: ollama_chat/llama3.1:8b
+    api_base: ${OLLAMA_API_BASE:-http://localhost:11434}
+    kind: local
+  - id: ollama-qwen2.5
+    label: "Ollama: qwen2.5:7b (good at tool calls)"
+    model: ollama_chat/qwen2.5:7b
+    api_base: ${OLLAMA_API_BASE:-http://localhost:11434}
+    kind: local
+  - id: vllm
+    label: "vLLM (OpenAI-compatible server)"
+    model: openai/${VLLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+    api_base: ${VLLM_API_BASE:-http://localhost:8001/v1}
+    api_key: ${VLLM_API_KEY:-none}
+    kind: local
+  - id: llamacpp
+    label: "llama.cpp server (OpenAI-compatible)"
+    model: openai/local-model
+    api_base: ${LLAMACPP_API_BASE:-http://localhost:8080/v1}
+    api_key: none
+    kind: local
+
+  # --- Cloud models via API keys (FR-1; optional, budget-capped) ---
+  - id: gemini-flash
+    label: "Gemini 2.5 Flash"
+    model: gemini/gemini-2.5-flash
+    requires_env: GEMINI_API_KEY
+    kind: cloud
+  - id: gpt-4o-mini
+    label: "OpenAI GPT-4o mini"
+    model: openai/gpt-4o-mini
+    requires_env: OPENAI_API_KEY
+    kind: cloud
+  - id: claude-haiku
+    label: "Anthropic Claude Haiku 4.5"
+    model: anthropic/claude-haiku-4-5-20251001
+    requires_env: ANTHROPIC_API_KEY
+    kind: cloud

@@ -1,0 +1,12 @@
+# MCP servers (FR-8). Each server is launched over stdio inside the sandbox and its tools are
+# registered in the tool gateway automatically - add a server here, no code changes needed.
+# Tool names are exposed to the agent as  mcp__<server>__<tool>.
+servers:
+  calendar:
+    command: python
+    args: ["mcp_servers/calendar_server.py"]
+    env: {}                     # SANDBOX_ROOT is passed automatically
+    risk_level: medium          # FR-10 metadata applied to every tool from this server
+    resources: ["calendar"]
+    output_source: tool_output
+    enabled: true
