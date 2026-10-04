@@ -74,7 +74,9 @@ here last until the server restarts. To make them permanent, set `hooks.enabled`
 *Hold the action* (block), *Let it through* (allow), or *Ask me here* (human). In human mode the
 run pauses and a yellow card appears in the live view with what the agent wants to do and why,
 plus **Approve** / **Reject** buttons. No answer within `hooks.review_timeout_s` counts as
-Reject. CLI runs have nobody to ask, so they hold the action.
+Reject. CLI runs have nobody to ask, so they hold the action. To try it, start the console with
+`AGENTSHIELD_PLUGINS=examples.example_review:register` (asks before every outgoing email) and
+run *Meeting notes follow-up*.
 
 ### Export telemetry
 

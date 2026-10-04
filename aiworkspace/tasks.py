@@ -111,9 +111,10 @@ def _args_match(args: dict, wanted: dict | None) -> bool:
 
 
 def in_scope(resource: str | None, authorised: list[str]) -> bool:
-    """'kb_search' authorises 'kb_search:<query>'; 'file:report.pdf' authorises exactly that file."""
+    """'kb_search' authorises 'kb_search:<query>', 'mcp:calendar' authorises 'mcp:calendar/<tool>';
+    'file:report.pdf' authorises exactly that file."""
     resource = (resource or "").lower()
-    return any(resource == a.lower() or resource.startswith(a.lower() + ":") for a in authorised)
+    return any(resource == a.lower() or resource.startswith((a.lower() + ":", a.lower() + "/")) for a in authorised)
 
 
 def _calls(events: list[dict], name: str, executed_only: bool) -> list[dict]:

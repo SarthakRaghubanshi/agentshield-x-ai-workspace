@@ -18,10 +18,11 @@ from .memory import LongTermMemory
 from .sandbox.tools import ToolSpec, _obj
 
 MEMORY_TOOLS = [
-    ToolSpec("remember", "Save a fact or note to long-term memory so it is available in future tasks.",
+    ToolSpec("remember", "SAVE a fact, note or preference to long-term memory so it is available in future "
+             "conversations. Use this when the user asks you to remember something.",
              _obj({"content": {"type": "string"}}, ["content"]),
              "medium", ["memory"], "long_term_memory", "tool_output", "long_term_memory", location="agent"),
-    ToolSpec("recall", "Search long-term memory for notes relevant to a query.",
+    ToolSpec("recall", "LOOK UP notes previously saved in long-term memory (read-only; does not save anything).",
              _obj({"query": {"type": "string"}}, ["query"]),
              "low", ["memory"], "long_term_memory", "memory", "long_term_memory", location="agent"),
 ]

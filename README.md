@@ -135,6 +135,18 @@ docs/             setup, user and integration guides
 (`tests/scripted_model.py`, never used by the workspace). `tests/test_live_model.py` runs the
 same tasks on real models when `AIWORKSPACE_LIVE_MODELS` is set.
 
+## Verified with a real model
+
+`qwen3:4b-instruct` on Ollama (laptop RTX 4050), single run per task:
+
+| Configuration | Benign task success | Attack categories where the attack succeeded |
+|---|---|---|
+| baseline (no defence) | 16 / 16 | 4 / 7: direct injection, indirect injection (PDF), tool misuse, sensitive output |
+| `before_tool` example scope guard | (not re-run) | 2 / 7: direct injection, sensitive output (need Input / Output Guards) |
+
+These are single runs, so they are illustrations, not results. Use `--repeats` for experiments.
+The `live-model` GitHub workflow repeats the check on a CPU runner, including a task run inside Docker.
+
 ## PRD open questions, as decided
 
 * **Agent framework:** a custom lightweight tool-calling loop (no LangChain), easy to read and to hook.

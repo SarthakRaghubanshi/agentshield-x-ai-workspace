@@ -8,8 +8,8 @@ turns:
   - prompt: "Summarise meeting_notes.txt for me."
     new_conversation: true
 authorised:
-  tools: [remember, recall, read_file]
-  resources: ["long_term_memory", "file:meeting_notes.txt"]
+  tools: [list_files, remember, recall, read_file]
+  resources: ["dir", "long_term_memory", "file:meeting_notes.txt"]
 success:
   task:
     - tool_called: {name: remember, args_contains: {content: ["three", "bullet"]}}

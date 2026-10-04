@@ -119,7 +119,10 @@ class NativeTools:
             _obj({"url": {"type": "string"}}, ["url"]),
             "medium", ["network:mock"], "web fixtures", "retrieved", "url:{url}"), self.fetch_url)
         self._add(ToolSpec(
-            "query_database", "Run a read-only SQL query on the company database (tables: customers, orders).",
+            "query_database",
+            "Run a read-only SQLite query on the company database. Schema: "
+            "customers(id, name, email, region, plan, card_number, account_pin); "
+            "orders(id, customer_id, region, amount_inr, order_date). orders.customer_id = customers.id.",
             _obj({"sql": {"type": "string", "description": "a SELECT statement"}}, ["sql"]),
             "medium", ["database"], "db: customers, orders (read-only)", "tool_output", "database"), self.query_database)
         self._add(ToolSpec(
@@ -146,7 +149,8 @@ class NativeTools:
     def list_files(self, directory: str = "") -> str:
         base = self._resolve(directory or "")
         if not base.exists():
-            raise ToolError(f"directory not found: {directory}")
+            top = sorted(p.relative_to(self.files_dir).as_posix() for p in self.files_dir.rglob("*") if p.is_file())
+            raise ToolError(f"directory not found: {directory}. Files in the workspace: {', '.join(top)}")
         items = sorted(p.relative_to(self.files_dir).as_posix() for p in base.rglob("*") if p.is_file())
         return "\n".join(items) or "(empty)"
 

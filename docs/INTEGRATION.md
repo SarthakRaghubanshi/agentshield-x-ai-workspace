@@ -86,7 +86,7 @@ Every run records the active configuration in `runs.defence` (e.g. `baseline` or
 `before_tool:tool_guard`), so baseline vs defended results never get mixed (SRS Ch. 12).
 
 `examples/example_guard.py` is a 20-line working example: a scope check against the task's
-`authorised.resources`.
+`authorised.resources`. `examples/example_review.py` shows the REVIEW / human-approval flow.
 
 ## 3. Telemetry for the ML work
 
