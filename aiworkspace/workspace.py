@@ -37,6 +37,8 @@ class Workspace:
         self._sandbox_session: str | None = None   # which conversation the sandbox state belongs to
 
     async def start(self) -> None:
+        # Runs left "running" by a previous process that was stopped mid-run.
+        self.telemetry.mark_interrupted()
         await self.sandbox.start()
         await self.gateway.refresh()
         self.reload_tasks()
@@ -51,12 +53,13 @@ class Workspace:
     # ---- running ----------------------------------------------------------------
     async def run(self, *, task_id: str | None = None, prompt: str | None = None, model: str | None = None,
                   repeat_index: int = 0, batch_id: str | None = None, run_id: str | None = None,
-                  session_id: str | None = None) -> dict:
+                  session_id: str | None = None, keep_memory: bool = False) -> dict:
         """Run a task (all its turns) or a typed prompt.
 
         `session_id` continues an earlier conversation (a console follow-up): its short-term
         memory is restored and the sandbox / long-term memory are NOT reset, so the agent sees the
-        state the previous turn left behind.
+        state the previous turn left behind. `keep_memory` starts a new conversation on a clean
+        sandbox but keeps long-term memory (the chat screen uses this).
         """
         if task_id:
             if task_id not in self.tasks:
@@ -97,7 +100,7 @@ class Workspace:
                     history = self.memory.conversations.get(session_id)
                 else:
                     history = []
-                    await self._prepare(task, ctx)
+                    await self._prepare(task, ctx, keep_memory=keep_memory)
                 outputs, status, steps = [], "completed", 0
                 for i, turn in enumerate(turns, start=1):
                     ctx.turn = i
@@ -132,7 +135,7 @@ class Workspace:
                 raise
         return self.telemetry.get_run(run_id)
 
-    async def _prepare(self, task: dict, ctx: RunContext) -> None:
+    async def _prepare(self, task: dict, ctx: RunContext, keep_memory: bool = False) -> None:
         """Clean sandbox + memory (FR-13), then apply the task's setup."""
         setup = task.get("setup") or {}
         overlay = dict(setup.get("files") or {})
@@ -142,7 +145,7 @@ class Workspace:
             overlay[dest] = (ROOT / "attack_assets" / src).read_text(encoding="utf-8")
         if (self.cfg.get("sandbox") or {}).get("reset_between_runs", True):
             await self.sandbox.reset(overlay)
-        if (self.cfg.get("memory") or {}).get("reset_between_runs", True):
+        if not keep_memory and (self.cfg.get("memory") or {}).get("reset_between_runs", True):
             self.memory.reset()
         for item in setup.get("memory", []) or []:
             await self.memory.write_memory(item["content"], source=item.get("source", "memory"), ctx=ctx,

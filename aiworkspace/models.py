@@ -47,33 +47,57 @@ def resolve_model(model_id: str) -> dict:
     return {"id": model_id, "model": model_id, "label": model_id, "kind": "custom"}
 
 
-async def _endpoint_up(entry: dict) -> bool:
-    """A local model is usable if its OpenAI-compatible / Ollama endpoint answers."""
-    import httpx
+_PROBE_CACHE: dict[str, tuple[float, object]] = {}   # url -> (checked_at, response json or None)
+_PROBE_TTL_S = 15.0
 
-    base = (entry.get("api_base") or "").rstrip("/")
-    if not base:
-        return False
-    url = f"{base}/api/tags" if entry["model"].startswith("ollama") else f"{base}/models"
+
+async def _probe(http, url: str) -> object:
+    """GET a local model endpoint once; None if unreachable. Hard 1 s cap per request, cached
+    briefly (a closed localhost port can take seconds to refuse on Windows)."""
+    cached = _PROBE_CACHE.get(url)
+    if cached and time.monotonic() - cached[0] < _PROBE_TTL_S:
+        return cached[1]
     try:
-        async with httpx.AsyncClient(timeout=1.5) as http:
-            r = await http.get(url)
-        if r.status_code != 200:
-            return False
-        if entry["model"].startswith("ollama"):  # the model must also be pulled
-            name = entry["model"].split("/", 1)[1]
-            pulled = {m.get("name") for m in r.json().get("models", [])}
-            return name in pulled or f"{name}:latest" in pulled
-        return True
+        r = await asyncio.wait_for(http.get(url), timeout=1.0)
+        result = r.json() if r.status_code == 200 else None
     except Exception:
+        result = None
+    _PROBE_CACHE[url] = (time.monotonic(), result)
+    return result
+
+
+def _probe_url(entry: dict) -> str | None:
+    # "localhost" can resolve to IPv6 first on Windows, adding a slow fallback for IPv4-only servers.
+    base = (entry.get("api_base") or "").rstrip("/").replace("://localhost", "://127.0.0.1")
+    if not base:
+        return None
+    return f"{base}/api/tags" if entry["model"].startswith("ollama") else f"{base}/models"
+
+
+def _endpoint_up(entry: dict, response: object) -> bool:
+    """A local model is usable if its endpoint answered (and, for Ollama, the model is pulled)."""
+    if response is None:
         return False
+    if entry["model"].startswith("ollama"):
+        name = entry["model"].split("/", 1)[1]
+        pulled = {m.get("name") for m in (response.get("models", []) if isinstance(response, dict) else [])}
+        return name in pulled or f"{name}:latest" in pulled
+    return True
 
 
 async def list_models() -> list[dict]:
     """Registered models with an `available` flag (API key present / local endpoint reachable)."""
     entries = model_registry()
-    local_up = await asyncio.gather(*[_endpoint_up(m) if m.get("kind") == "local" else asyncio.sleep(0, False)
-                                      for m in entries])
+    urls = sorted({u for m in entries if m.get("kind") == "local" and (u := _probe_url(m))})
+    fresh = {u: c[1] for u in urls if (c := _PROBE_CACHE.get(u)) and time.monotonic() - c[0] < _PROBE_TTL_S}
+    responses = dict(fresh)
+    if len(fresh) < len(urls):
+        import httpx
+
+        stale = [u for u in urls if u not in fresh]
+        async with httpx.AsyncClient(timeout=1.0) as http:  # one client: building SSL contexts is slow
+            responses.update(zip(stale, await asyncio.gather(*[_probe(http, u) for u in stale])))  # each endpoint once
+    local_up = [_endpoint_up(m, responses.get(_probe_url(m))) if m.get("kind") == "local" else False for m in entries]
     out = []
     for m, up in zip(entries, local_up):
         if m.get("kind") == "local":

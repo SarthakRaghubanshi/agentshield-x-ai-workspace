@@ -3,348 +3,589 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI Workspace Console</title>
+<title>AI Workspace</title>
 <style>
+/* Tokens. One accent (teal), neutral zinc greys, light + dark. Radius rule:
+   panels 12px, controls 8px, chat bubbles 14px. */
 :root {
-  --bg: #f6f7f9; --panel: #ffffff; --ink: #1b1f24; --muted: #5d6673; --line: #e2e5ea;
-  --accent: #2f5bd3; --accent-ink: #ffffff; --ok: #1f7a4d; --ok-bg: #e5f4ec; --bad: #b42318; --bad-bg: #fdecea;
-  --warn: #8a5a00; --warn-bg: #fff4dc; --chip: #eef1f5; --code: #f2f4f7;
+  --bg: #f4f4f5; --surface: #ffffff; --surface-2: #fafafa; --ink: #18181b; --ink-2: #3f3f46;
+  --muted: #71717a; --line: #e4e4e7; --line-2: #d4d4d8;
+  --accent: #0f766e; --accent-ink: #ffffff; --accent-soft: #e6f4f2;
+  --user-bubble: #0f766e; --user-ink: #ffffff;
+  --ok: #15803d; --ok-bg: #e8f5ec; --bad: #b42318; --bad-bg: #fdecea; --warn: #8a5300; --warn-bg: #fff4e0;
+  --code: #f4f4f5; --shadow: 0 1px 2px rgba(24, 24, 27, .06), 0 4px 16px rgba(24, 24, 27, .04);
+  --r-panel: 12px; --r-ctl: 8px; --r-bubble: 14px;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #111418; --panel: #1a1e24; --ink: #e6e9ee; --muted: #9aa4b2; --line: #2b313a;
-    --accent: #6d8ff0; --accent-ink: #0d1117; --ok: #5fd39a; --ok-bg: #16301f; --bad: #ff8a80; --bad-bg: #3a1a18;
-    --warn: #f5c46b; --warn-bg: #352a12; --chip: #242a33; --code: #14181d;
+    --bg: #0f0f11; --surface: #18181b; --surface-2: #1f1f23; --ink: #f4f4f5; --ink-2: #d4d4d8;
+    --muted: #a1a1aa; --line: #27272a; --line-2: #3f3f46;
+    --accent: #2dd4bf; --accent-ink: #042f2e; --accent-soft: #10302d;
+    --user-bubble: #134e4a; --user-ink: #f0fdfa;
+    --ok: #4ade80; --ok-bg: #132a1c; --bad: #f87171; --bad-bg: #3a1716; --warn: #fbbf24; --warn-bg: #33270e;
+    --code: #111113; --shadow: 0 1px 2px rgba(0, 0, 0, .4);
   }
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-header { display: flex; align-items: baseline; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
-header h1 { font-size: 16px; margin: 0; }
-header .sub { color: var(--muted); font-size: 13px; }
-header .right { margin-left: auto; color: var(--muted); font-size: 12px; }
-main { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; padding: 16px 20px; max-width: 1500px; margin: 0 auto; }
-@media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 12px 16px; } }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
-.panel + .panel { margin-top: 16px; }
-h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
-label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
-select, textarea, input[type=number] { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--ink); font: inherit; }
-textarea { min-height: 84px; resize: vertical; }
-.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-button { border: 1px solid var(--line); background: var(--chip); color: var(--ink); padding: 7px 12px; border-radius: 7px; font: inherit; cursor: pointer; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; border: 1px solid var(--line-2); background: var(--surface); padding: 7px 12px; border-radius: var(--r-ctl); }
+button:hover { border-color: var(--muted); }
+button:active { transform: translateY(1px); }
+button:disabled { opacity: .5; cursor: default; transform: none; }
 button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
-button:disabled { opacity: .55; cursor: default; }
-.hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
-.chip { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; background: var(--chip); color: var(--muted); white-space: nowrap; }
-.chip.attack { background: var(--bad-bg); color: var(--bad); }
-.chip.benign { background: var(--ok-bg); color: var(--ok); }
+select, textarea, input[type=number], input[type=text] { width: 100%; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: var(--r-ctl); background: var(--surface); }
+select:focus, textarea:focus, input:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-2); margin: 12px 0 6px; }
+.hint { font-size: 12px; color: var(--muted); }
+.mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; }
+.chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; background: var(--surface-2); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.chip.attack { color: var(--bad); background: var(--bad-bg); border-color: transparent; }
+.chip.benign { color: var(--ok); background: var(--ok-bg); border-color: transparent; }
 .yes { color: var(--ok); font-weight: 600; } .no { color: var(--bad); font-weight: 600; } .na { color: var(--muted); }
-.toggle { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px dashed var(--line); font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
-.toggle:last-of-type { border-bottom: 0; }
-.timeline { display: flex; flex-direction: column; gap: 8px; max-height: 62vh; overflow: auto; }
-.ev { border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg); }
-.ev.tool_call { border-left-color: var(--accent); }
-.ev.tool_result { border-left-color: var(--accent); }
-.ev.model_call { border-left-color: var(--muted); }
+
+/* ---------- top bar ---------- */
+.topbar { height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; }
+.brand { font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+.tabs { display: flex; gap: 4px; }
+.tabs button { border: none; background: transparent; color: var(--muted); font-weight: 600; padding: 7px 12px; }
+.tabs button.active { color: var(--ink); background: var(--surface-2); box-shadow: inset 0 -2px 0 var(--accent); border-radius: var(--r-ctl) var(--r-ctl) 0 0; }
+.topbar .spacer { flex: 1; }
+.model-pick { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.model-pick select { width: 280px; max-width: 46vw; padding: 6px 8px; }
+.model-pick input { width: 220px; padding: 6px 8px; }
+.status { font-size: 12px; color: var(--muted); white-space: nowrap; }
+@media (max-width: 760px) { .status { display: none; } .brand { display: none; } }
+
+/* ---------- chat ---------- */
+.chat { display: grid; grid-template-columns: 260px minmax(0, 1fr); height: calc(100dvh - 56px); }
+.sidebar { border-right: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; min-height: 0; }
+.sidebar .top { padding: 12px; }
+.sidebar .top button { width: 100%; }
+.sessions { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+.sessions h3 { font-size: 12px; color: var(--muted); font-weight: 600; margin: 8px 8px 6px; }
+.session { display: block; width: 100%; text-align: left; border: none; background: transparent; padding: 8px 10px; border-radius: var(--r-ctl); }
+.session:hover { background: var(--surface-2); }
+.session.active { background: var(--accent-soft); }
+.session .t { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.session .s { display: block; font-size: 11px; color: var(--muted); }
+.sidebar .foot { border-top: 1px solid var(--line); padding: 12px; font-size: 12px; color: var(--muted); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sidebar .foot button { padding: 4px 8px; font-size: 12px; }
+@media (max-width: 760px) { .chat { grid-template-columns: 1fr; } .sidebar { display: none; } }
+
+.conv { display: flex; flex-direction: column; min-height: 0; }
+.messages { flex: 1; overflow-y: auto; padding: 24px 16px; }
+.column { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+.msg { display: flex; flex-direction: column; gap: 6px; }
+.msg.user { align-items: flex-end; }
+.msg.user .bubble { background: var(--user-bubble); color: var(--user-ink); border-radius: var(--r-bubble) var(--r-bubble) 4px var(--r-bubble); padding: 10px 14px; max-width: 80%; white-space: pre-wrap; word-break: break-word; }
+.msg.agent .who { font-size: 12px; font-weight: 600; color: var(--muted); }
+.msg.agent .answer { background: var(--surface); border: 1px solid var(--line); border-radius: 4px var(--r-bubble) var(--r-bubble) var(--r-bubble); padding: 12px 16px; box-shadow: var(--shadow); word-break: break-word; }
+.answer > :first-child { margin-top: 0; } .answer > :last-child { margin-bottom: 0; }
+.answer p { margin: 0 0 10px; } .answer ul, .answer ol { margin: 0 0 10px; padding-left: 22px; } .answer li { margin: 2px 0; }
+.answer h3 { font-size: 15px; margin: 12px 0 6px; }
+.answer code { background: var(--code); padding: 1px 5px; border-radius: 5px; font-size: 12.5px; font-family: ui-monospace, Consolas, monospace; }
+.answer pre { background: var(--code); padding: 10px 12px; border-radius: var(--r-ctl); overflow-x: auto; }
+.answer pre code { padding: 0; background: none; }
+.answer hr { border: none; border-top: 1px solid var(--line); margin: 12px 0; }
+.answer.error { border-color: var(--bad); background: var(--bad-bg); }
+.working { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; padding: 4px 2px; }
+.dots { display: inline-flex; gap: 4px; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: .35; }
+@media (prefers-reduced-motion: no-preference) {
+  .dots i { animation: blink 1.2s infinite ease-in-out; } .dots i:nth-child(2) { animation-delay: .2s; } .dots i:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+}
+details.steps { font-size: 13px; }
+details.steps summary { cursor: pointer; color: var(--muted); list-style: none; display: inline-flex; gap: 6px; align-items: center; padding: 2px 0; }
+details.steps summary::-webkit-details-marker { display: none; }
+details.steps summary::before { content: "\25B8"; font-size: 11px; transition: transform .15s; }
+details.steps[open] summary::before { transform: rotate(90deg); }
+.step { border-left: 2px solid var(--line-2); margin: 8px 0 0 4px; padding: 2px 0 2px 12px; }
+.step.blocked { border-left-color: var(--bad); }
+.step .h { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.step .h b { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+.step pre { margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; background: var(--code); padding: 8px 10px; border-radius: var(--r-ctl); max-height: 220px; overflow: auto; font: 12px/1.45 ui-monospace, Consolas, monospace; }
+.review { border: 1px solid var(--warn); background: var(--warn-bg); border-radius: var(--r-panel); padding: 12px 14px; }
+.review pre { white-space: pre-wrap; background: var(--surface); padding: 8px 10px; border-radius: var(--r-ctl); font: 12px/1.45 ui-monospace, Consolas, monospace; max-height: 200px; overflow: auto; }
+.empty { margin: 8vh auto 0; max-width: 560px; text-align: center; }
+.empty h2 { font-size: 22px; letter-spacing: -.01em; margin: 0 0 8px; }
+.empty p { color: var(--muted); margin: 0 0 20px; }
+.suggestions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; }
+.suggestions button { padding: 12px 14px; border-radius: var(--r-panel); background: var(--surface); line-height: 1.4; }
+.suggestions button:hover { border-color: var(--accent); }
+@media (max-width: 560px) { .suggestions { grid-template-columns: 1fr; } }
+.composer { border-top: 1px solid var(--line); background: var(--surface); padding: 12px 16px 14px; }
+.composer .box { max-width: 780px; margin: 0 auto; display: flex; gap: 10px; align-items: flex-end; }
+.composer textarea { resize: none; min-height: 44px; max-height: 180px; padding: 11px 12px; line-height: 1.45; }
+.composer button { height: 44px; padding: 0 18px; }
+.composer .hint { max-width: 780px; margin: 6px auto 0; }
+
+/* ---------- experiments ---------- */
+.exp { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; padding: 16px; max-width: 1500px; margin: 0 auto; }
+@media (max-width: 900px) { .exp { grid-template-columns: 1fr; } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); padding: 16px; }
+.panel + .panel { margin-top: 16px; }
+.panel h2 { font-size: 14px; margin: 0 0 4px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.toggle { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.toggle:last-of-type { border-bottom: none; }
+.timeline { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow: auto; }
+.ev { border: 1px solid var(--line); border-left: 3px solid var(--line-2); border-radius: var(--r-ctl); padding: 8px 10px; background: var(--surface-2); }
+.ev.tool_call, .ev.tool_result { border-left-color: var(--accent); }
 .ev.output_generated { border-left-color: var(--ok); }
 .ev.memory_write, .ev.memory_read { border-left-color: var(--warn); }
 .ev.error, .ev.blocked { border-left-color: var(--bad); }
-.ev.review { border-left-color: var(--warn); background: var(--warn-bg); }
-.ev .head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.ev .head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .ev .head b { color: var(--ink); font-size: 13px; }
-.ev pre { margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.45 ui-monospace, Consolas, monospace; background: var(--code); padding: 7px 8px; border-radius: 6px; max-height: 260px; overflow: auto; }
-.status { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
-.output { white-space: pre-wrap; background: var(--code); border-radius: 8px; padding: 10px; font-size: 13px; margin-top: 10px; }
+.ev pre { margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.45 ui-monospace, Consolas, monospace; background: var(--code); padding: 7px 8px; border-radius: 6px; max-height: 240px; overflow: auto; }
+.status-line { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0 12px; font-size: 13px; }
+.output { background: var(--code); border-radius: var(--r-ctl); padding: 10px 12px; margin-top: 8px; word-break: break-word; }
+.output.no { white-space: pre-wrap; }
+.subtabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.subtabs button.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.tablewrap { overflow: auto; max-height: 360px; }
 table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { color: var(--muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; }
-tbody tr { cursor: pointer; } tbody tr:hover { background: var(--bg); }
-.tablewrap { overflow-x: auto; max-height: 340px; overflow-y: auto; }
-.mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
-.tabs { display: flex; gap: 6px; margin-bottom: 10px; }
-.tabs button.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.empty { color: var(--muted); padding: 20px 0; text-align: center; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; position: sticky; top: 0; background: var(--surface); }
+tbody tr[data-run] { cursor: pointer; } tbody tr[data-run]:hover { background: var(--surface-2); }
+.placeholder { color: var(--muted); padding: 24px 0; text-align: center; }
+[hidden] { display: none !important; }
 </style>
 </head>
 <body>
-<header>
-  <h1>AI Workspace</h1>
-  <span class="sub">AgentShield-X task console. Sandboxed agent, tools and telemetry</span>
-  <span class="right" id="health">connecting…</span>
+<header class="topbar">
+  <span class="brand">AI Workspace</span>
+  <nav class="tabs" role="tablist">
+    <button class="active" data-view="chat" role="tab">Chat</button>
+    <button data-view="exp" role="tab">Experiments</button>
+  </nav>
+  <span class="spacer"></span>
+  <div class="model-pick">
+    <label for="model" style="margin:0" class="hint">Model</label>
+    <select id="model"></select>
+    <input id="custommodel" type="text" placeholder="LiteLLM model, e.g. groq/llama-3.1-8b-instant" hidden>
+  </div>
+  <span class="status" id="health">connecting</span>
 </header>
-<main>
+
+<!-- =================== CHAT =================== -->
+<main id="view-chat" class="chat">
+  <aside class="sidebar">
+    <div class="top"><button class="primary" id="newchat">New chat</button></div>
+    <div class="sessions">
+      <h3>Recent chats</h3>
+      <div id="sessionlist"><div class="hint" style="padding:0 8px">No chats yet.</div></div>
+    </div>
+    <div class="foot"><span id="memcount">Long-term memory</span><button id="clearmem" title="Forget everything the agent saved with the remember tool">Clear</button></div>
+  </aside>
+  <section class="conv">
+    <div class="messages" id="messages"><div class="column" id="column"></div></div>
+    <div class="composer">
+      <div class="box">
+        <textarea id="input" rows="1" placeholder="Message the agent" aria-label="Message the agent"></textarea>
+        <button class="primary" id="send">Send</button>
+      </div>
+      <div class="hint">Enter to send, Shift+Enter for a new line. The agent works in a sandbox with synthetic company data; a new chat starts from a clean sandbox.</div>
+    </div>
+  </section>
+</main>
+
+<!-- =================== EXPERIMENTS =================== -->
+<main id="view-exp" class="exp" hidden>
   <section>
     <div class="panel">
-      <h2>New run</h2>
-      <label for="model">Model</label>
-      <select id="model"></select>
-      <input id="custommodel" placeholder="e.g. groq/llama-3.1-8b-instant" hidden style="margin-top:6px; width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:7px; background:var(--bg); color:var(--ink); font:inherit">
-      <div id="modelhint" class="hint"></div>
+      <h2>Run a task</h2>
+      <div class="hint">Benign tasks and attack scenarios from <span class="mono">tasks/</span>. Each run starts from a clean sandbox and empty long-term memory, so it also clears notes saved in Chat.</div>
       <label for="task">Task</label>
       <select id="task"></select>
-      <div id="taskinfo" class="hint"></div>
-      <div id="promptwrap" hidden>
-        <label for="prompt">Message to the agent</label>
-        <textarea id="prompt" placeholder="Talk to the agent, e.g. Summarise report.pdf in three bullet points"></textarea>
-      </div>
+      <div id="taskinfo" class="hint" style="margin-top:8px"></div>
       <label for="repeats">Repeats</label>
       <input id="repeats" type="number" min="1" max="50" value="1">
-      <div class="row" style="margin-top:12px">
-        <button class="primary" id="runbtn">Run task</button>
-      </div>
-      <label>Batch (sequential, clean sandbox each run)</label>
+      <div class="row" style="margin-top:12px"><button class="primary" id="runbtn">Run task</button></div>
+      <label>Run a whole suite</label>
       <div class="row">
         <button data-batch="">All tasks</button>
         <button data-batch="benign">Benign</button>
         <button data-batch="attack">Attacks</button>
       </div>
-      <div id="batchmsg" class="hint"></div>
+      <div id="batchmsg" class="hint" style="margin-top:8px"></div>
     </div>
 
     <div class="panel">
       <h2>Extension points</h2>
-      <div id="hooks"></div>
-      <div class="hint">Pass-through by default. A security layer registers handlers through a plugin; this switches each point on or off.</div>
+      <div class="hint">Where the security layer attaches. Pass-through when nothing is registered.</div>
+      <div id="hooks" style="margin-top:8px"></div>
     </div>
 
     <div class="panel">
-      <h2>Export telemetry</h2>
-      <div class="row">
+      <h2>Telemetry</h2>
+      <div class="row" style="margin-top:8px">
         <a href="/api/export?fmt=csv&table=events"><button>Events CSV</button></a>
         <a href="/api/export?fmt=json&table=events"><button>Events JSON</button></a>
         <a href="/api/export?fmt=csv&table=runs"><button>Runs CSV</button></a>
       </div>
-      <div class="row" style="margin-top:8px">
-        <button id="resetbtn">Reset sandbox</button>
-      </div>
+      <div class="row" style="margin-top:8px"><button id="resetbtn">Reset sandbox and memory</button></div>
     </div>
   </section>
 
   <section>
     <div class="panel">
-      <h2>Live run</h2>
-      <div class="status" id="runstatus"><span class="na">No run selected. Start one or pick a past run below.</span></div>
+      <h2>Run details</h2>
+      <div class="status-line" id="runstatus"><span class="na">Run a task, or pick one from the table below.</span></div>
       <div class="timeline" id="timeline"></div>
       <div id="final"></div>
     </div>
-
     <div class="panel">
-      <div class="tabs">
-        <button class="active" data-tab="runs">Past runs</button>
-        <button data-tab="summary">Summary</button>
+      <div class="subtabs">
+        <button class="active" data-sub="runs">Past runs</button>
+        <button data-sub="summary">Metrics</button>
       </div>
-      <div id="tab-runs" class="tablewrap"></div>
-      <div id="tab-summary" class="tablewrap" hidden></div>
+      <div id="sub-runs" class="tablewrap"></div>
+      <div id="sub-summary" class="tablewrap" hidden></div>
     </div>
   </section>
 </main>
 
 <script>
-const $ = (s) => document.querySelector(s);
+const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const api = async (path, opts) => { const r = await fetch(path, opts); if (!r.ok) throw new Error(await r.text()); return r.json(); };
-const fmtTime = (iso) => iso ? new Date(iso).toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
-const catChip = (label, cat) => cat && cat !== label ? `<span class="chip">${esc(cat)}</span>` : "";
+const api = async (path, opts) => { const r = await fetch(path, opts); if (!r.ok) throw new Error((await r.text()) || r.statusText); return r.json(); };
+const post = (path, body) => api(path, { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
 const flag = (v) => v === null || v === undefined ? '<span class="na">n/a</span>' : (v ? '<span class="yes">yes</span>' : '<span class="no">no</span>');
-let tasks = {}, source = null, currentRun = null;
+const fmtTime = (iso) => iso ? new Date(iso).toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} } };
 
-async function init() {
-  const [health, models, taskList, hooks] = await Promise.all([api("/api/health"), api("/api/models"), api("/api/tasks"), api("/api/hooks")]);
-  $("#health").textContent = `v${health.version} · sandbox: ${health.sandbox_mode} · ${health.tools} tools`;
-  const firstUp = (models.models.find(m => m.id === models.default && m.available) || models.models.find(m => m.available) || {}).id;
-  $("#model").innerHTML = models.models.map(m =>
-    `<option value="${esc(m.id)}" ${m.id === firstUp ? "selected" : ""} ${m.available ? "" : "disabled"}>${esc(m.label)}${m.available ? "" : " (" + esc(m.unavailable_reason) + ")"}</option>`).join("")
-    + `<option value="__custom">Other LiteLLM model string…</option>`;
-  if (!firstUp) { $("#model").value = "__custom"; $("#modelhint").textContent = "No configured model is reachable. Add an API key to .env, start Ollama (ollama pull qwen2.5:7b), or enter a LiteLLM model string."; }
-  showModel();
-  tasks = Object.fromEntries(taskList.map(t => [t.id, t]));
-  const groups = { benign: [], attack: [] };
-  taskList.forEach(t => (groups[t.label] || (groups[t.label] = [])).push(t));
-  $("#task").innerHTML = `<option value="__manual">Chat / custom prompt…</option>` + Object.entries(groups).map(([label, ts]) =>
-    `<optgroup label="${esc(label)}">${ts.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("")}</optgroup>`).join("");
-  $("#task").value = "__manual";   // open in chat mode; pick a task from the list to run tests
-  showTask(); renderHooks(hooks); loadRuns();
+/* ---------- tiny, safe markdown (escape first, then format) ---------- */
+function md(src) {
+  const blocks = String(src ?? "").replace(/\r/g, "").split(/```/);
+  return blocks.map((part, i) => {
+    if (i % 2 === 1) return `<pre><code>${esc(part.replace(/^\w*\n/, ""))}</code></pre>`;
+    const lines = esc(part).split("\n"); let html = "", list = null, para = [];
+    const inline = (t) => t.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
+    const flushP = () => { if (para.length) { html += `<p>${inline(para.join("<br>"))}</p>`; para = []; } };
+    const flushL = () => { if (list) { html += `</${list}>`; list = null; } };
+    for (const raw of lines) {
+      const line = raw.trimEnd(); let m;
+      if (!line.trim()) { flushP(); flushL(); continue; }
+      if ((m = line.match(/^#{1,4}\s+(.*)/))) { flushP(); flushL(); html += `<h3>${inline(m[1])}</h3>`; continue; }
+      if (/^(-{3,}|\*{3,})$/.test(line.trim())) { flushP(); flushL(); html += "<hr>"; continue; }
+      if ((m = line.match(/^\s*[-*•]\s+(.*)/))) { flushP(); if (list !== "ul") { flushL(); html += "<ul>"; list = "ul"; } html += `<li>${inline(m[1])}</li>`; continue; }
+      if ((m = line.match(/^\s*\d+[.)]\s+(.*)/))) { flushP(); if (list !== "ol") { flushL(); html += "<ol>"; list = "ol"; } html += `<li>${inline(m[1])}</li>`; continue; }
+      flushL(); para.push(line);
+    }
+    flushP(); flushL(); return html;
+  }).join("");
 }
 
-function showModel() { $("#custommodel").hidden = $("#model").value !== "__custom"; }
-const selectedModel = () => $("#model").value === "__custom" ? $("#custommodel").value.trim() : $("#model").value;
-
-function showTask() {
-  const id = $("#task").value, manual = id === "__manual";
-  $("#promptwrap").hidden = !manual;
-  $("#runbtn").textContent = manual ? "Send" : "Run task";
-  if (manual) { $("#taskinfo").innerHTML = ""; return; }
-  const t = tasks[id];
-  $("#taskinfo").innerHTML = `<span class="chip ${esc(t.label)}">${esc(t.label)}</span> ${catChip(t.label, t.category)}
-    <div style="margin-top:6px">${esc(t.prompt)}</div>${t.description ? `<div style="margin-top:4px">${esc(t.description)}</div>` : ""}`;
-}
-
-function renderHooks(status) {
-  const points = ["before_input", "before_tool", "before_memory_write", "before_output"];
-  $("#hooks").innerHTML = points.map(p => `<div class="toggle"><span>${p}<br><span class="hint">${status[p].handlers.length} handler(s)</span></span>
-    <input type="checkbox" data-point="${p}" ${status[p].enabled ? "checked" : ""}></div>`).join("")
-    + (status.plugins.length ? `<div class="hint">Plugins: ${status.plugins.map(esc).join(", ")}</div>` : "")
-    + `<label for="reviewmode">When a guard returns REVIEW</label>
-       <select id="reviewmode">
-         <option value="block">Hold the action (block)</option>
-         <option value="allow">Let it through (allow)</option>
-         <option value="human">Ask me here (human review)</option>
-       </select>`;
-  $("#reviewmode").value = status.review_behaviour;
-  $("#reviewmode").onchange = async () => renderHooks(await api("/api/review-mode", { method: "POST",
-    headers: {"Content-Type": "application/json"}, body: JSON.stringify({ behaviour: $("#reviewmode").value }) }));
-  document.querySelectorAll("[data-point]").forEach(cb => cb.onchange = async () =>
-    renderHooks(await api("/api/hooks", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ point: cb.dataset.point, enabled: cb.checked }) })));
-}
-
-async function startRun() {
-  const id = $("#task").value, body = { model: selectedModel(), repeats: +$("#repeats").value || 1 };
-  if (!body.model) return $("#custommodel").focus();
-  if (id === "__manual") { body.prompt = $("#prompt").value.trim(); if (!body.prompt) return $("#prompt").focus(); }
-  else body.task_id = id;
-  $("#runbtn").disabled = true;
-  try { const r = await api("/api/runs", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) }); watch(r.run_ids[0]); }
-  catch (e) { $("#batchmsg").textContent = "Error: " + e.message; }
-  finally { setTimeout(() => $("#runbtn").disabled = false, 400); }
-}
-
-function watch(runId) {
-  if (source) source.close();
-  currentRun = runId;
-  $("#timeline").innerHTML = ""; $("#final").innerHTML = "";
-  $("#runstatus").innerHTML = `<span class="mono">${esc(runId)}</span> <span class="chip">starting</span>`;
-  source = new EventSource(`/api/runs/${runId}/stream`);
-  source.onmessage = (m) => {
+/* ---------- run streaming (server-sent events) ---------- */
+function stream(runId, h) {
+  const es = new EventSource(`/api/runs/${runId}/stream`);
+  es.onmessage = (m) => {
     const msg = JSON.parse(m.data);
-    if (msg.kind === "event") addEvent(msg.event);
-    if (msg.kind === "run" || msg.kind === "done") renderRunStatus(msg.run);
-    if (msg.kind === "review") addReview(msg.review);
-    if (msg.kind === "review_done") closeReview(msg.review_id, msg.approved);
-    if (msg.kind === "done") { source.close(); loadRuns(); }
+    if (msg.kind === "event") h.event?.(msg.event);
+    else if (msg.kind === "run") h.run?.(msg.run);
+    else if (msg.kind === "review") h.review?.(msg.review);
+    else if (msg.kind === "review_done") h.reviewDone?.(msg.review_id, msg.approved);
+    else if (msg.kind === "done") { es.close(); h.done?.(msg.run); }
   };
-  source.onerror = () => { source.close(); loadRun(runId); };
+  es.onerror = () => { es.close(); h.lost?.(); };
+  return es;
+}
+
+/* ---------- models (shared by both screens) ---------- */
+let models = [];
+const selectedModel = () => $("#model").value === "__custom" ? $("#custommodel").value.trim() : $("#model").value;
+async function loadModels() {
+  const res = await api("/api/models"); models = res.models;
+  const saved = store.get("model");
+  const pick = [saved, res.default].find(id => models.some(m => m.id === id && m.available)) || models.find(m => m.available)?.id;
+  $("#model").innerHTML = models.map(m => `<option value="${esc(m.id)}" ${m.available ? "" : "disabled"}>${esc(m.label)}${m.available ? "" : " (" + esc(m.unavailable_reason) + ")"}</option>`).join("")
+    + `<option value="__custom">Other LiteLLM model string</option>`;
+  $("#model").value = pick || "__custom";
+  $("#custommodel").hidden = $("#model").value !== "__custom";
+  return Boolean(pick);
+}
+$("#model").onchange = () => { $("#custommodel").hidden = $("#model").value !== "__custom"; if ($("#model").value !== "__custom") store.set("model", $("#model").value); };
+
+/* ================= CHAT ================= */
+let session = store.get("session"), busy = false, tasksById = {};
+const column = $("#column"), scroller = $("#messages");
+const scrollDown = () => { scroller.scrollTop = scroller.scrollHeight; };
+
+const SUGGESTIONS = [
+  "Summarise report.pdf in three bullet points.",
+  "Which region has the highest total order value? Use the database.",
+  "What is planned for Q1 2027 in our product roadmap?",
+  "Read meeting_notes.txt and email Priya Sharma the action items.",
+];
+function renderEmpty() {
+  column.innerHTML = `<div class="empty"><h2>Talk to the agent</h2>
+    <p>It can read the workspace files, query the company database, search the knowledge base, send mock emails and remember things.</p>
+    <div class="suggestions">${SUGGESTIONS.map(s => `<button data-suggest="${esc(s)}">${esc(s)}</button>`).join("")}</div></div>`;
+  column.querySelectorAll("[data-suggest]").forEach(b => b.onclick = () => { $("#input").value = b.dataset.suggest; send(); });
+}
+function chatNotice(text) {
+  if ($(".empty", column)) column.innerHTML = "";
+  const d = document.createElement("div"); d.className = "msg agent";
+  d.innerHTML = `<div class="answer error">${esc(text)}</div>`; column.appendChild(d);
+}
+
+function addUser(text) {
+  if ($(".empty", column)) column.innerHTML = "";
+  const el = document.createElement("div"); el.className = "msg user";
+  el.innerHTML = `<div class="bubble">${esc(text)}</div>`; column.appendChild(el); scrollDown();
+}
+function addAgent() {
+  const el = document.createElement("div"); el.className = "msg agent";
+  el.innerHTML = `<span class="who">Agent</span><div class="working"><span class="dots"><i></i><i></i><i></i></span><span class="what">Thinking</span></div>
+    <div class="answer" hidden></div><details class="steps" hidden><summary></summary><div class="list"></div></details>`;
+  column.appendChild(el); scrollDown(); return el;
+}
+function stepHtml(call, result) {
+  const args = call.args_json ? JSON.parse(call.args_json) : {};
+  const blocked = call.outcome && call.outcome !== "dispatched";
+  const chips = [call.resource_accessed ? `<span class="chip">${esc(call.resource_accessed)}</span>` : "",
+    result?.provenance_source ? `<span class="chip">source: ${esc(result.provenance_source)}</span>` : "",
+    result?.trust_level ? `<span class="chip">${esc(result.trust_level)}</span>` : "",
+    call.final_decision ? `<span class="chip ${call.final_decision === "ALLOW" ? "benign" : "attack"}">${esc(call.final_decision)}</span>` : ""].join(" ");
+  const out = result ? String(result.content || "") : "";
+  return `<div class="step ${blocked ? "blocked" : ""}"><div class="h"><b>${esc(call.tool_called)}</b>${chips}</div>
+    <pre>${esc(Object.keys(args).length ? JSON.stringify(args, null, 1) : "(no arguments)")}${out ? "\n\n" + esc(out.length > 1200 ? out.slice(0, 1200) + " ..." : out) : ""}</pre></div>`;
+}
+function renderSteps(el, events) {
+  const calls = events.filter(e => e.event_type === "tool_call");
+  const det = $("details.steps", el);
+  if (!calls.length) { det.hidden = true; return; }
+  const results = events.filter(e => e.event_type === "tool_result");
+  const used = [...new Set(calls.map(c => c.tool_called))];
+  const blocked = calls.filter(c => c.outcome !== "dispatched").length;
+  $("summary", det).textContent = `${calls.length} step${calls.length > 1 ? "s" : ""}: ${used.join(", ")}${blocked ? ` (${blocked} blocked)` : ""}`;
+  $(".list", det).innerHTML = calls.map(c => stepHtml(c, results.find(r => r.tool_called === c.tool_called && r.event_id > c.event_id && r.step === c.step))).join("");
+  det.hidden = false;
+}
+function finishAgent(el, run, events) {
+  $(".working", el)?.remove();
+  const ans = $(".answer", el);
+  const failed = !run || ["error", "interrupted"].includes(run.status);
+  const text = run?.final_output || run?.error || (run ? `No answer (${run.status}).` : "The connection was lost. Open the chat again from the sidebar to see the result.");
+  ans.className = "answer" + (failed ? " error" : ""); ans.innerHTML = md(text); ans.hidden = false;
+  if (events) renderSteps(el, events);
+  scrollDown();
+}
+function addReviewCard(el, rv) {
+  const card = document.createElement("div"); card.className = "review"; card.id = rv.review_id;
+  card.innerHTML = `<strong>Approval needed</strong><div class="hint">${esc(rv.reason || "A guard asked for a human decision.")}</div>
+    <pre>${esc(typeof rv.payload === "string" ? rv.payload : JSON.stringify(rv.payload, null, 1))}</pre>
+    <div class="row" style="margin-top:8px"><button class="primary" data-ok="1">Approve</button><button data-ok="0">Reject</button></div>`;
+  card.querySelectorAll("[data-ok]").forEach(b => b.onclick = async () => {
+    card.querySelectorAll("button").forEach(x => x.disabled = true);
+    await fetch(`/api/reviews/${rv.review_id}`, { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({ approve: b.dataset.ok === "1" }) });
+  });
+  const anchor = $(".answer", el); anchor ? el.insertBefore(card, anchor) : el.appendChild(card);
+  scrollDown();
+}
+function reviewDone(id, ok) { const c = document.getElementById(id); if (c) $(".row", c).innerHTML = `<span class="${ok ? "yes" : "no"}">${ok ? "Approved" : "Rejected"}</span>`; }
+
+async function send() {
+  const text = $("#input").value.trim(), model = selectedModel();
+  if (!text || busy) return;
+  if (!model) {
+    if ($("#model").value === "__custom") $("#custommodel").focus();
+    else chatNotice("Still checking which models are available. Try again in a moment.");
+    return;
+  }
+  busy = true; $("#send").disabled = true; $("#input").value = ""; autosize();
+  addUser(text); const el = addAgent(); const events = [];
+  const finish = () => { busy = false; $("#send").disabled = false; $("#input").focus(); loadSessions(); loadMemory(); };
+  try {
+    const r = await post("/api/runs", { prompt: text, model, session_id: session, keep_memory: true });
+    stream(r.run_ids[0], {
+      event(e) {
+        events.push(e);
+        const what = $(".what", el);
+        if (what && e.event_type === "tool_call") what.textContent = `Using ${e.tool_called}`;
+        if (what && e.event_type === "model_call" && e.outcome === "final") what.textContent = "Writing the answer";
+      },
+      run(run) { if (run.session_id && session !== run.session_id) { session = run.session_id; store.set("session", session); } },
+      review(rv) { addReviewCard(el, rv); },
+      reviewDone,
+      done(run) { finishAgent(el, run, events); finish(); },
+      lost() { finishAgent(el, null, events); finish(); },
+    });
+  } catch (err) { finishAgent(el, { status: "error", error: err.message }); finish(); }
+}
+
+async function openSession(id) {
+  if (busy) return;
+  session = id; store.set("session", id);
+  column.innerHTML = "";
+  try {
+    const s = await api(`/api/sessions/${encodeURIComponent(id)}?events=true`);
+    if (!s.runs.length) { session = null; store.set("session", null); renderEmpty(); }
+    for (const run of s.runs) { addUser(run.prompt); finishAgent(addAgent(), run, run.events); }
+  } catch { session = null; store.set("session", null); renderEmpty(); }
+  highlightSession();
+}
+function newChat() { if (busy) return; session = null; store.set("session", null); renderEmpty(); highlightSession(); $("#input").focus(); }
+async function loadSessions() {
+  const list = await api("/api/sessions?limit=40");
+  $("#sessionlist").innerHTML = list.length ? list.map(s => `<button class="session" data-session="${esc(s.session_id)}">
+      <span class="t">${esc(s.title)}</span><span class="s">${esc(fmtTime(s.last_at))}, ${s.turns} message${s.turns > 1 ? "s" : ""}</span></button>`).join("")
+    : `<div class="hint" style="padding:0 8px">No chats yet.</div>`;
+  $("#sessionlist").querySelectorAll("[data-session]").forEach(b => b.onclick = () => openSession(b.dataset.session));
+  highlightSession();
+}
+function highlightSession() { document.querySelectorAll(".session").forEach(b => b.classList.toggle("active", b.dataset.session === session)); }
+async function loadMemory() { const m = await api("/api/memory"); $("#memcount").textContent = `Long-term memory: ${m.length} note${m.length === 1 ? "" : "s"}`; }
+
+const autosize = () => { const t = $("#input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 180) + "px"; };
+$("#input").addEventListener("input", autosize);
+$("#input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+$("#send").onclick = send;
+$("#newchat").onclick = newChat;
+$("#clearmem").onclick = async () => { await fetch("/api/memory", { method: "DELETE" }); loadMemory(); };
+
+/* ================= EXPERIMENTS ================= */
+let expSource = null, currentRun = null;
+function showTask() {
+  const t = tasksById[$("#task").value]; if (!t) return;
+  const prompt = t.turns ? t.turns.map(x => typeof x === "string" ? x : x.prompt).join(" | ") : t.prompt;
+  $("#taskinfo").innerHTML = `<span class="chip ${esc(t.label)}">${esc(t.label)}</span> ${t.category !== t.label ? `<span class="chip">${esc(t.category)}</span>` : ""}
+    <div style="margin-top:6px">${esc(prompt)}</div>${t.description ? `<div style="margin-top:4px">${esc(t.description)}</div>` : ""}`;
+}
+async function loadTasks() {
+  const list = await api("/api/tasks"); tasksById = Object.fromEntries(list.map(t => [t.id, t]));
+  const groups = {}; list.forEach(t => (groups[t.label] = groups[t.label] || []).push(t));
+  $("#task").innerHTML = Object.entries(groups).map(([label, ts]) => `<optgroup label="${esc(label)} (${ts.length})">${ts.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("")}</optgroup>`).join("");
+  showTask();
+}
+$("#task").onchange = showTask;
+
+function renderHooks(st) {
+  const points = ["before_input", "before_tool", "before_memory_write", "before_output"];
+  $("#hooks").innerHTML = points.map(p => `<div class="toggle"><span><span class="mono">${p}</span><br><span class="hint">${st[p].handlers.length ? st[p].handlers.map(esc).join(", ") : "no handlers"}</span></span>
+      <input type="checkbox" data-point="${p}" ${st[p].enabled ? "checked" : ""} aria-label="enable ${p}"></div>`).join("")
+    + (st.plugins.length ? `<div class="hint" style="margin-top:6px">Plugins: ${st.plugins.map(esc).join(", ")}</div>` : "")
+    + `<label for="reviewmode">When a guard asks for review</label>
+       <select id="reviewmode"><option value="block">Hold the action</option><option value="allow">Let it through</option><option value="human">Ask me (Approve / Reject)</option></select>`;
+  $("#reviewmode").value = st.review_behaviour;
+  $("#reviewmode").onchange = async () => renderHooks(await post("/api/review-mode", { behaviour: $("#reviewmode").value }));
+  document.querySelectorAll("[data-point]").forEach(cb => cb.onchange = async () => renderHooks(await post("/api/hooks", { point: cb.dataset.point, enabled: cb.checked })));
 }
 
 function addEvent(e) {
   const blocked = e.final_decision && e.final_decision !== "ALLOW";
-  let title = e.event_type.replace("_", " "), body = "";
   const args = e.args_json ? JSON.parse(e.args_json) : null, details = e.details_json ? JSON.parse(e.details_json) : null;
-  if (e.event_type === "tool_call") { title = `tool call → ${e.tool_called}`; body = JSON.stringify(args, null, 1); }
-  else if (e.event_type === "tool_result") { title = `tool result ← ${e.tool_called}`; body = e.content; }
+  let title = e.event_type.replace(/_/g, " "), body = e.content;
+  if (e.event_type === "tool_call") { title = `tool call: ${e.tool_called}`; body = JSON.stringify(args, null, 1); }
+  else if (e.event_type === "tool_result") title = `tool result: ${e.tool_called}`;
   else if (e.event_type === "model_call") { title = `model call (${e.outcome})`; body = e.content || (details?.tool_calls || []).map(c => `${c.name}(${JSON.stringify(c.args)})`).join("\n"); }
-  else body = e.content;
-  const meta = [
-    e.turn > 1 ? `turn ${e.turn}` : "", e.step != null ? `step ${e.step}` : "", e.resource_accessed ? `resource: ${e.resource_accessed}` : "",
-    e.provenance_source ? `source: ${e.provenance_source}` : "", e.trust_level ? `trust: ${e.trust_level}` : "",
-    e.latency_ms != null ? `${Math.round(e.latency_ms)} ms` : "", e.total_tokens ? `${e.total_tokens} tok` : "",
-    e.final_decision ? `decision: ${e.final_decision}` : "", e.outcome && e.event_type !== "model_call" ? `outcome: ${e.outcome}` : "",
-  ].filter(Boolean).map(s => `<span class="chip">${esc(s)}</span>`).join(" ");
-  const el = document.createElement("div");
-  el.className = `ev ${e.event_type} ${blocked ? "blocked" : ""}`;
+  const meta = [e.turn > 1 ? `turn ${e.turn}` : "", e.step != null ? `step ${e.step}` : "", e.resource_accessed || "",
+    e.provenance_source ? `source: ${e.provenance_source}` : "", e.trust_level || "", e.latency_ms != null ? `${Math.round(e.latency_ms)} ms` : "",
+    e.total_tokens ? `${e.total_tokens} tokens` : "", e.final_decision ? `decision: ${e.final_decision}` : "",
+    e.outcome && e.event_type !== "model_call" ? e.outcome : ""].filter(Boolean).map(s => `<span class="chip">${esc(s)}</span>`).join(" ");
+  const el = document.createElement("div"); el.className = `ev ${e.event_type} ${blocked ? "blocked" : ""}`;
   el.innerHTML = `<div class="head"><b>${esc(title)}</b>${meta}</div>${body ? `<pre>${esc(body)}</pre>` : ""}`;
-  $("#timeline").appendChild(el);
-  $("#timeline").scrollTop = $("#timeline").scrollHeight;
+  $("#timeline").appendChild(el); $("#timeline").scrollTop = $("#timeline").scrollHeight;
 }
-
 function renderRunStatus(run) {
   if (!run || run.run_id !== currentRun) return;
-  $("#runstatus").innerHTML = `<span class="mono">${esc(run.run_id)}</span>
-    <span class="chip ${esc(run.label)}">${esc(run.label)}</span>${catChip(run.label, run.category)}
+  $("#runstatus").innerHTML = `<span class="mono">${esc(run.task_id)}</span><span class="chip ${esc(run.label)}">${esc(run.label)}</span>
     <span class="chip">${esc(run.model)}</span><span class="chip">defence: ${esc(run.defence || "baseline")}</span><span class="chip">${esc(run.status)}</span>
     <span>task success: ${flag(run.task_success)}</span><span>attack success: ${flag(run.attack_success)}</span>`;
-  const finished = !["queued", "running"].includes(run.status);
-  if (run.final_output) $("#final").innerHTML = `<label>Final output</label><div class="output">${esc(run.final_output)}</div>`
-    + (finished && run.session_id ? `<label for="followup">Follow up in this conversation</label>
-       <div class="row"><textarea id="followup" style="min-height:52px; flex:1" placeholder="Ask a follow-up question…"></textarea>
-       <button class="primary" id="followbtn">Send</button></div>
-       <div class="hint">Continues ${esc(run.session_id)}: the agent keeps the conversation, and the sandbox is not reset.</div>` : "");
-  if (run.error) $("#final").innerHTML = `<div class="output no">${esc(run.error)}</div>`;
-  if ($("#followbtn")) $("#followbtn").onclick = () => followUp(run.session_id);
+  $("#final").innerHTML = run.final_output ? `<label>Final output</label><div class="answer output">${md(run.final_output)}</div>` : (run.error ? `<div class="output no">${esc(run.error)}</div>` : "");
 }
-
-async function followUp(sessionId) {
-  const prompt = $("#followup").value.trim(), model = selectedModel();
-  if (!prompt) return $("#followup").focus();
-  $("#followbtn").disabled = true;
-  const r = await api("/api/runs", { method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ prompt, model, session_id: sessionId }) });
-  watch(r.run_ids[0]);
-}
-
-function addReview(rv) {
-  const el = document.createElement("div");
-  el.className = "ev review"; el.id = rv.review_id;
-  el.innerHTML = `<div class="head"><b>Human review needed: ${esc(rv.point)}</b><span class="chip">step ${rv.step}</span>
-    <span class="chip">times out in ${Math.round(rv.timeout_s)} s</span></div>
-    ${rv.reason ? `<div class="hint">Reason: ${esc(rv.reason)}</div>` : ""}
-    <pre>${esc(typeof rv.payload === "string" ? rv.payload : JSON.stringify(rv.payload, null, 1))}</pre>
-    <div class="row" style="margin-top:8px"><button class="primary" data-approve="1">Approve</button><button data-approve="0">Reject</button></div>`;
-  el.querySelectorAll("[data-approve]").forEach(b => b.onclick = async () => {
-    el.querySelectorAll("button").forEach(x => x.disabled = true);
-    await fetch(`/api/reviews/${rv.review_id}`, { method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ approve: b.dataset.approve === "1" }) });
+function watch(runId) {
+  if (expSource) expSource.close();
+  currentRun = runId; $("#timeline").innerHTML = ""; $("#final").innerHTML = "";
+  $("#runstatus").innerHTML = `<span class="mono">${esc(runId)}</span><span class="chip">starting</span>`;
+  expSource = stream(runId, {
+    event: addEvent, run: renderRunStatus,
+    review(rv) { const el = document.createElement("div"); el.className = "ev"; $("#timeline").appendChild(el); addReviewCard(el, rv); },
+    reviewDone,
+    done(run) { renderRunStatus(run); loadRuns(); }, lost() { loadRun(runId); },
   });
-  $("#timeline").appendChild(el);
-  $("#timeline").scrollTop = $("#timeline").scrollHeight;
 }
-
-function closeReview(id, approved) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.querySelector(".row").innerHTML = `<span class="${approved ? "yes" : "no"}">${approved ? "Approved" : "Rejected"}</span>`;
-}
-
 async function loadRun(runId) {
-  if (source) source.close();
+  if (expSource) expSource.close();
   currentRun = runId;
   const { run, events } = await api(`/api/runs/${runId}`);
-  $("#timeline").innerHTML = ""; $("#final").innerHTML = "";
-  events.forEach(addEvent); renderRunStatus(run);
-  if (run.status === "running" || run.status === "queued") watch(runId);
+  $("#timeline").innerHTML = ""; events.forEach(addEvent); renderRunStatus(run);
+  if (["queued", "running"].includes(run.status)) watch(runId);
 }
-
+async function runTask() {
+  const model = selectedModel(); if (!model) return $("#custommodel").focus();
+  $("#runbtn").disabled = true;
+  try { const r = await post("/api/runs", { task_id: $("#task").value, model, repeats: +$("#repeats").value || 1 }); watch(r.run_ids[0]); }
+  catch (e) { $("#batchmsg").textContent = "Error: " + e.message; }
+  finally { setTimeout(() => $("#runbtn").disabled = false, 400); }
+}
+async function startBatch(label) {
+  const model = selectedModel(); if (!model) return $("#custommodel").focus();
+  const repeats = +$("#repeats").value || 1;
+  const r = await post("/api/batches", { model, repeats, label: label || null });
+  $("#batchmsg").textContent = `Running ${r.tasks.length} task(s) x ${repeats}. Results appear in the table as they finish.`;
+  const poll = setInterval(async () => {
+    await loadRuns(); const runs = await api(`/api/runs?batch_id=${r.batch_id}`);
+    const doneN = runs.filter(x => !["queued", "running"].includes(x.status)).length;
+    $("#batchmsg").textContent = `${doneN} of ${r.tasks.length * repeats} runs finished.`;
+    if (doneN >= r.tasks.length * repeats) { clearInterval(poll); $("#batchmsg").textContent = `Done: ${doneN} runs. See Metrics.`; }
+  }, 2000);
+}
 async function loadRuns() {
-  const runs = await api("/api/runs?limit=200");
-  $("#tab-runs").innerHTML = runs.length ? `<table><thead><tr><th>Started</th><th>Task</th><th>Label</th><th>Model</th><th>Defence</th><th>Status</th><th>Task ok</th><th>Attack ok</th><th>Steps</th></tr></thead><tbody>
-    ${runs.map(r => `<tr data-run="${esc(r.run_id)}"><td class="mono">${esc(fmtTime(r.started_at))}</td><td>${esc(r.task_id)}${r.repeat_index ? ` #${r.repeat_index + 1}` : ""}</td>
-      <td><span class="chip ${esc(r.label)}">${esc(r.label)}</span></td><td class="mono">${esc(r.model)}</td><td class="mono">${esc(r.defence || "baseline")}</td><td>${esc(r.status)}</td>
-      <td>${flag(r.task_success)}</td><td>${flag(r.attack_success)}</td><td>${r.steps ?? ""}</td></tr>`).join("")}</tbody></table>`
-    : `<div class="empty">No runs yet.</div>`;
-  document.querySelectorAll("[data-run]").forEach(tr => tr.onclick = () => loadRun(tr.dataset.run));
+  const runs = (await api("/api/runs?limit=200")).filter(r => r.label !== "manual");
+  $("#sub-runs").innerHTML = runs.length ? `<table><thead><tr><th>Started</th><th>Task</th><th>Label</th><th>Model</th><th>Defence</th><th>Status</th><th>Task ok</th><th>Attack ok</th><th>Steps</th></tr></thead><tbody>
+    ${runs.map(r => `<tr data-run="${esc(r.run_id)}"><td>${esc(fmtTime(r.started_at))}</td><td>${esc(r.task_id)}${r.repeat_index ? ` #${r.repeat_index + 1}` : ""}</td>
+      <td><span class="chip ${esc(r.label)}">${esc(r.label)}</span></td><td class="mono">${esc(r.model)}</td><td class="mono">${esc(r.defence || "baseline")}</td>
+      <td>${esc(r.status)}</td><td>${flag(r.task_success)}</td><td>${flag(r.attack_success)}</td><td>${r.steps ?? ""}</td></tr>`).join("")}</tbody></table>`
+    : `<div class="placeholder">No task runs yet. Chats are listed in the Chat screen.</div>`;
+  document.querySelectorAll("tr[data-run]").forEach(tr => tr.onclick = () => loadRun(tr.dataset.run));
   const s = await api("/api/summary");
+  const groups = s.groups.filter(g => g.label !== "manual");
   const pct = (v) => v === null || v === undefined ? '<span class="na">n/a</span>' : `${Math.round(v * 100)}%`;
   const ms = (v) => v === null || v === undefined ? '<span class="na">n/a</span>' : `${v < 10 ? v.toFixed(2) : Math.round(v)} ms`;
-  $("#tab-summary").innerHTML = s.groups.length ? `<table><thead><tr><th>Model</th><th>Defence</th><th>Label</th><th>Category</th><th>Runs</th>
-    <th title="Task success rate">Task ok</th><th title="Attack success rate">ASR</th><th title="Runs with an executed unauthorised action or a reached attacker goal">Unsafe</th>
-    <th title="Tool calls outside the authorised scope">Tool misuse</th><th title="Out-of-scope calls contained">Recovery</th><th title="Benign actions blocked or held">False block</th>
-    <th>Avg run</th><th title="Time inside the security layer per run">Hook time</th></tr></thead><tbody>
-    ${s.groups.map(g => `<tr><td class="mono">${esc(g.model)}</td><td class="mono">${esc(g.defence)}</td><td><span class="chip ${esc(g.label)}">${esc(g.label)}</span></td><td>${esc(g.category)}</td><td>${g.runs}</td>
+  $("#sub-summary").innerHTML = groups.length ? `<table><thead><tr><th>Model</th><th>Defence</th><th>Label</th><th>Category</th><th>Runs</th>
+      <th title="Task success rate">Task ok</th><th title="Attack success rate">ASR</th><th title="Runs with an executed unauthorised action or a reached attacker goal">Unsafe</th>
+      <th title="Tool calls outside the authorised scope">Misuse</th><th title="Out-of-scope calls that were contained">Recovery</th><th title="Benign actions blocked or held">False block</th>
+      <th>Avg run</th><th title="Time inside the security layer per run">Hook time</th></tr></thead><tbody>
+    ${groups.map(g => `<tr><td class="mono">${esc(g.model)}</td><td class="mono">${esc(g.defence)}</td><td><span class="chip ${esc(g.label)}">${esc(g.label)}</span></td><td>${esc(g.category)}</td><td>${g.runs}</td>
       <td>${pct(g.task_success_rate)}</td><td>${pct(g.attack_success_rate)}</td><td>${pct(g.unsafe_action_rate)}</td><td>${pct(g.tool_misuse_rate)}</td>
       <td>${pct(g.recovery_rate)}</td><td>${pct(g.false_blocking_rate)}</td><td>${ms(g.avg_run_ms)}</td><td>${ms(g.avg_hook_ms)}</td></tr>`).join("")}</tbody></table>
-    <div class="hint" style="margin-top:6px">Metrics as defined in SRS Ch. 13. Precision/recall/F1 of the anomaly detector are computed by the ML pipeline from the exported telemetry.</div>`
-    : `<div class="empty">No runs yet.</div>`;
+    <div class="hint" style="margin-top:8px">SRS Ch. 13 metrics. Detector precision / recall / F1 come from the ML pipeline using the exported telemetry.</div>`
+    : `<div class="placeholder">No task runs yet.</div>`;
 }
-
-async function startBatch(label) {
-  const body = { model: selectedModel(), repeats: +$("#repeats").value || 1, label: label || null };
-  if (!body.model) return $("#custommodel").focus();
-  const r = await api("/api/batches", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
-  $("#batchmsg").textContent = `Started ${r.batch_id}: ${r.tasks.length} task(s) × ${body.repeats}. Runs appear below as they finish.`;
-  const poll = setInterval(async () => { await loadRuns(); const runs = await api(`/api/runs?batch_id=${r.batch_id}`);
-    if (runs.length >= r.tasks.length * body.repeats && runs.every(x => !["queued", "running"].includes(x.status))) { clearInterval(poll); $("#batchmsg").textContent = `${r.batch_id} finished. See the Summary tab.`; } }, 1500);
-}
-
-$("#task").onchange = showTask;
-$("#model").onchange = showModel;
-$("#runbtn").onclick = startRun;
+$("#runbtn").onclick = runTask;
 document.querySelectorAll("[data-batch]").forEach(b => b.onclick = () => startBatch(b.dataset.batch));
-$("#resetbtn").onclick = async () => { const r = await api("/api/sandbox/reset", { method: "POST" }); $("#batchmsg").textContent = `Sandbox reset (#${r.count}).`; };
-document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => {
-  document.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x === b));
-  $("#tab-runs").hidden = b.dataset.tab !== "runs"; $("#tab-summary").hidden = b.dataset.tab !== "summary";
+$("#resetbtn").onclick = async () => { const r = await post("/api/sandbox/reset", {}); $("#batchmsg").textContent = `Sandbox and memory reset (#${r.count}).`; loadMemory(); };
+document.querySelectorAll("[data-sub]").forEach(b => b.onclick = () => {
+  document.querySelectorAll("[data-sub]").forEach(x => x.classList.toggle("active", x === b));
+  $("#sub-runs").hidden = b.dataset.sub !== "runs"; $("#sub-summary").hidden = b.dataset.sub !== "summary";
 });
-init().catch(e => { $("#health").textContent = "error: " + e.message; });
+
+/* ---------- screens ---------- */
+function showView(v) {
+  document.querySelectorAll("[data-view]").forEach(b => b.classList.toggle("active", b.dataset.view === v));
+  $("#view-chat").hidden = v !== "chat"; $("#view-exp").hidden = v !== "exp";
+  store.set("view", v);
+  if (v === "exp") loadRuns(); else $("#input").focus();
+}
+document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => showView(b.dataset.view));
+
+(async function init() {
+  try {
+    const h = await api("/api/health");
+    $("#health").textContent = `sandbox: ${h.sandbox_mode}, ${h.tools} tools`;
+    showView(store.get("view") === "exp" ? "exp" : "chat");
+    $("#model").innerHTML = `<option value="">Checking models</option>`;
+    const models = loadModels();            // probes local endpoints; do not block the page on it
+    loadTasks(); loadSessions(); loadMemory(); api("/api/hooks").then(renderHooks);
+    if (session) await openSession(session); else renderEmpty();
+    if (!(await models)) chatNotice("No configured model is reachable. Start Ollama and pull a model (ollama pull qwen3:4b-instruct), add an API key to .env, or enter a LiteLLM model string at the top right.");
+  } catch (e) { $("#health").textContent = "server not reachable"; chatNotice("Cannot reach the workspace server: " + e.message); }
+})();
 </script>
 </body>
 </html>

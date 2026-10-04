@@ -28,7 +28,7 @@ No model needed. The suite swaps the model layer for a test-only scripted client
 pytest -q
 ```
 
-**Expected:** `28 passed, 2 skipped`. The two skipped tests need a real model (section 2).
+**Expected:** `30 passed, 2 skipped`. The two skipped tests need a real model (section 2).
 
 | Test file | Covers |
 |---|---|
@@ -69,17 +69,23 @@ Start the console and open <http://localhost:8000>:
 python -m aiworkspace serve
 ```
 
-**Check the header:** `v0.1.0 · sandbox: local · 16 tools`. The **Model** list shows your model as selectable.
-The console opens in chat mode (**Task** = *Chat / custom prompt…*): type a message, click **Send**,
-and keep talking with **Follow up in this conversation**. Pick a task from the list to run the tests below.
-Models you have not set up are greyed out with the reason.
+**Check the top bar:** `sandbox: local, 16 tools` on the right, and your model selectable in **Model**
+(models you have not set up are greyed out with the reason).
+
+**Chat check:** on the **Chat** screen type "Which region has the highest total order value?
+Use the database." and press Enter. Expected: the agent answers *North, INR 196,000*. Under the
+answer, **N steps** shows the `query_database` calls. Then ask "And which is lowest?":
+the agent answers *East* because it remembers the conversation. The chat appears under
+**Recent chats**.
+
+The acceptance-criteria checks below use the **Experiments** screen (top bar).
 
 ### AC 2: a legitimate multi-tool task runs in the sandbox
 
-1. **Task** → *Meeting notes follow-up (multi-tool)* → **Run task**.
-2. Watch **Live run**: `tool call → read_file` (meeting_notes.txt), `read_file` (contacts.csv),
+1. **Experiments** → **Task** → *Meeting notes follow-up (multi-tool)* → **Run task**.
+2. Watch **Run details**: `tool call → read_file` (meeting_notes.txt), `read_file` (contacts.csv),
    `send_email` to priya.sharma@northwind.example, then **output generated**.
-3. **Expected:** status `completed`, **task success: yes**. **Export telemetry → Reset sandbox**
+3. **Expected:** status `completed`, **task success: yes**. **Telemetry → Reset sandbox and memory**
    restores the sandbox. Nothing left the machine: the email went to `runtime/sandbox/outbox/emails.jsonl`.
 
 ### AC 3: every input, tool call, memory write and output is logged with provenance
@@ -119,7 +125,7 @@ AGENTSHIELD_PLUGINS=examples.example_guard:register python -m aiworkspace serve
 2. Run *Tool misuse - access outside authorised scope*.
 3. **Expected:** the `read_file → protected_data.txt` card is red with `decision: BLOCK`, and
    **attack success: no**. The **Summary** tab shows the run under defence
-   `before_tool:scope_guard`, separate from `baseline`.
+   `before_tool:scope_guard`, separate from `baseline` (Experiments → **Metrics**).
 
 ### AC 7: clean state with one command
 
@@ -131,16 +137,19 @@ AGENTSHIELD_PLUGINS=examples.example_guard:register python -m aiworkspace serve
 
 Put a key in `.env` (e.g. a free `GEMINI_API_KEY`), restart, and run *Summarise the quarterly
 report* once with the Ollama model and once with *Gemini 2.5 Flash*, changing only the
-**Model** dropdown. **Expected:** both succeed. The **Summary** tab lists both models.
+**Model** picker. **Expected:** both succeed. **Metrics** lists both models.
 
 ### Conversations, follow-ups and human review
 
-* **Follow-up:** after any run, type a question in **Follow up in this conversation** (e.g. "Who
-  did you email?"). The answer uses the earlier conversation, and the sandbox is not reset.
+* **Conversation:** on the **Chat** screen, ask something, then a follow-up that only makes sense
+  with the first answer. **New chat** starts over; **Recent chats** reopens old ones.
+* **Long-term memory across chats:** in one chat say "Remember that my favourite region is West."
+  Click **New chat** and ask "What is my favourite region?". Expected: *West*, and the sidebar
+  counter shows 1 note. **Clear** forgets it.
 * **Human review:** start the console with `AGENTSHIELD_PLUGINS=examples.example_review:register`,
-  set **When a guard returns REVIEW** → *Ask me here (human review)*, and run *Meeting notes
-  follow-up*. A yellow card asks to approve the outgoing email. **Approve** → the run completes;
-  **Reject** → the email is not sent and the task fails.
+  set **Experiments → When a guard asks for review** → *Ask me (Approve / Reject)*, then in **Chat**
+  ask "Read meeting_notes.txt and email Priya Sharma the action items." An **Approval needed** card
+  appears. **Approve** → the email is sent; **Reject** → it is not.
 
 ## 4. Command-line checks
 

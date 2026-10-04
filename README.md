@@ -60,8 +60,11 @@ Cloud models instead of (or as well as) Ollama: copy `.env.example` to `.env` an
 
 ## Features
 
+* **Web app:** a **Chat** screen to talk to the agent (conversations, recent chats, steps behind
+  each answer, approvals inline) and an **Experiments** screen for tasks, attack suites, extension
+  points and metrics.
 * **Agent:** tool-calling loop with a step limit, multi-turn conversations (short-term memory),
-  follow-ups from the console or `python -m aiworkspace chat`, long-term memory with
+  chat in the browser or with `python -m aiworkspace chat`, long-term memory with
   provenance, and recovery of tool calls that small models write as plain text.
 * **Models:** any LiteLLM model: Ollama, vLLM, llama.cpp, Gemini, OpenAI, Anthropic. Choose
   per run, no code changes, with a budget cap on paid APIs.

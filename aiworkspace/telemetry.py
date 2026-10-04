@@ -175,6 +175,26 @@ class Telemetry:
                 if name not in existing:
                     self._db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}", [])
 
+    def mark_interrupted(self) -> int:
+        """Close runs a previous server left queued/running (it was stopped mid-run)."""
+        stale = self._query("SELECT run_id FROM runs WHERE status IN ('queued', 'running')")
+        for row in stale:
+            self.update_run(row["run_id"], status="interrupted", ended_at=now_iso(),
+                            error="the server stopped before this run finished")
+        return len(stale)
+
+    def sessions(self, limit: int = 50) -> list[dict]:
+        """Chat conversations (manual prompts grouped by session), newest first."""
+        rows = self._query("SELECT session_id, prompt, started_at, model, status FROM runs "
+                           "WHERE label = 'manual' AND session_id IS NOT NULL ORDER BY started_at")
+        by_session: dict[str, dict] = {}
+        for r in rows:
+            s = by_session.setdefault(r["session_id"], {"session_id": r["session_id"], "title": r["prompt"],
+                                                         "started_at": r["started_at"], "turns": 0})
+            s["turns"] += 1
+            s["last_at"], s["model"] = r["started_at"], r["model"]
+        return sorted(by_session.values(), key=lambda s: s["last_at"], reverse=True)[:limit]
+
     def clear(self) -> None:
         """Delete all telemetry (used by tests and by an explicit reset)."""
         with self._lock:

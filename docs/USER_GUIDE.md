@@ -37,78 +37,66 @@ until the model gives a final answer, or `max_steps` is reached.
 ## 2. The web console
 
 Start it with `python -m aiworkspace serve` (or `docker compose up`) and open
-<http://localhost:8000>. The header shows the version, the sandbox mode (`local` / `remote`)
-and the number of tools.
+<http://localhost:8000>. The top bar has two screens, **Chat** and **Experiments**, plus the
+**Model** picker on the right, which both screens use. Models that are not set up are greyed
+out with the reason. *Other LiteLLM model string* lets you type any
+[LiteLLM model name](https://docs.litellm.ai/docs/providers).
 
-### New run (left panel)
+### Chat (talk to the agent)
 
-1. **Model**: every model from `config/models.yaml`. Unreachable models are greyed out with the
-   reason (missing API key, Ollama not running, model not pulled). *Other LiteLLM model string…*
-   lets you type any [LiteLLM model name](https://docs.litellm.ai/docs/providers), e.g.
-   `groq/llama-3.1-8b-instant`.
-2. **Task**: the console opens on *Chat / custom prompt…*: type a message and click **Send** to
-   talk to the agent (logged with label `manual`), then keep going with **Follow up**. Or pick a
-   benign or attack task; its label, category, prompt and description appear below.
-3. **Repeats**: how many times to run it (1–50).
-4. **Run task** starts it and switches the live view to the first run.
-5. **Batch** buttons run **All tasks**, only **Benign** or only **Attacks** with the selected
-   model and repeats. Batches run one after another, each on a clean sandbox. Progress shows
-   under the buttons, and results appear in *Past runs* and *Summary*.
+The default screen works like a messaging app:
 
-### Follow-ups (conversations)
+* Type in the box at the bottom and press **Enter** (Shift+Enter for a new line), or click one
+  of the suggestions on an empty chat.
+* While the agent works you see what it is doing ("Using read_file", "Writing the answer").
+* Each answer has a **N steps** line underneath. Click it to see every tool the agent called,
+  with the arguments, what came back, the provenance source and trust level, and, when a
+  security layer is attached, the decision (a blocked step is marked red).
+* Keep typing to continue the conversation: the agent remembers everything earlier in the chat.
+* **New chat** starts a fresh conversation on a clean sandbox. Long-term memory (things the
+  agent saved with its `remember` tool) carries over between chats. The counter at the bottom of
+  the sidebar shows how many notes it has, and **Clear** forgets them.
+* **Recent chats** in the sidebar reopens any earlier conversation, steps included.
+* If a guard asks for human review (see below), an **Approval needed** card appears inside the
+  chat with **Approve** / **Reject**.
 
-When a run finishes, a **Follow up in this conversation** box appears under the final answer.
-What you send continues the same session: the agent sees the whole previous conversation, and
-the sandbox and long-term memory are **not** reset, so files it wrote or emails it sent are
-still there. Each follow-up is its own run (same `session_id`) in *Past runs*. From the command
-line, `python -m aiworkspace chat` does the same interactively.
+Chats are logged like everything else (label `manual`), so they appear in the telemetry export.
 
-### Extension points
+### Experiments (tasks, attacks, metrics)
 
-One switch per extension point, with the number of registered handlers. Switching a point on
-with no handlers changes nothing. The agent behaves identically (PRD acceptance criterion 4).
-Handlers come from security-layer plugins (see [INTEGRATION.md](INTEGRATION.md)). Switches made
-here last until the server restarts. To make them permanent, set `hooks.enabled` in
-`config/workspace.yaml`.
+The second screen is for the evaluation work:
 
-**When a guard returns REVIEW** chooses what happens to actions a guard wants a human to check:
-*Hold the action* (block), *Let it through* (allow), or *Ask me here* (human). In human mode the
-run pauses and a yellow card appears in the live view with what the agent wants to do and why,
-plus **Approve** / **Reject** buttons. No answer within `hooks.review_timeout_s` counts as
-Reject. CLI runs have nobody to ask, so they hold the action. To try it, start the console with
-`AGENTSHIELD_PLUGINS=examples.example_review:register` (asks before every outgoing email) and
-run *Meeting notes follow-up*.
+* **Run a task**: pick a benign task or an attack scenario. Its label, category, prompt and
+  description show below. Set **Repeats** (1 to 50; LLM output varies, PRD FR-27) and click
+  **Run task**. Every task run starts from a clean sandbox and empty long-term memory (for
+  reproducible experiments), which also clears notes the agent saved during chats.
+* **Run a whole suite**: **All tasks**, **Benign** or **Attacks** with the selected model and repeats.
+  Progress shows underneath. Results fill **Past runs** and **Metrics**.
+* **Extension points**: one switch per point, with the handlers registered on it. Switching a
+  point on with no handlers changes nothing (PRD acceptance criterion 4). Handlers come from
+  security-layer plugins (see [INTEGRATION.md](INTEGRATION.md)). **When a guard asks for review**
+  chooses what happens to REVIEW decisions: *Hold the action* (block), *Let it through* (allow),
+  or *Ask me* (an Approve / Reject card; no answer within `hooks.review_timeout_s` counts as
+  Reject). To try it, start the console with `AGENTSHIELD_PLUGINS=examples.example_review:register`
+  (asks before every outgoing email). Switches here last until the server restarts. Use
+  `hooks.enabled` in `config/workspace.yaml` to make them permanent.
+* **Telemetry**: **Events CSV / JSON** (every logged event) and **Runs CSV** (one row per run
+  with the verdicts). **Reset sandbox and memory** restores the pristine sandbox.
+* **Run details**: every event of the selected run, live while it happens:
 
-### Export telemetry
+  | Card | Meaning |
+  |---|---|
+  | **task start** / **input received** | the prompt entered the agent (`source: user`) |
+  | **memory read** / **memory write** | long-term memory loaded into the context / saved |
+  | **model call (tool_calls / final)** | one LLM call, with latency and tokens |
+  | **tool call: name** | a tool request: arguments, the concrete resource (e.g. `file:report.pdf`), and the outcome (`dispatched`, or `block` when a guard stopped it) |
+  | **tool result: name** | what the tool returned, with provenance (`document`, `retrieved`, ...) and trust level |
+  | **output generated** | the final answer as released |
+  | **task end** | the evaluated outcome (`task_success`, `task_failure`, `blocked`, `max_steps`, `error`) |
 
-* **Events CSV / Events JSON**: every logged event of every run.
-* **Runs CSV**: one row per run, with task / attack success and evaluation details.
-* **Reset sandbox**: restores the pristine sandbox and clears long-term memory. Runs do this
-  automatically. Use it after poking at the sandbox manually.
-
-### Live run (right panel)
-
-Every event of the selected run appears as a card, in order, while it happens:
-
-| Card | Meaning |
-|---|---|
-| **task start** / **input received** | the prompt entered the agent (`source: user`) |
-| **memory read** / **memory write** | long-term memory loaded into the context / saved |
-| **model call (tool_calls / final)** | one LLM call, with latency and tokens; shows the requested tool calls or the answer |
-| **tool call → name** | a tool request, with its arguments, the concrete `resource` (e.g. `file:report.pdf`) and the outcome (`dispatched`, or `blocked` by a guard) |
-| **tool result ← name** | what the tool returned, tagged with its provenance (`document`, `retrieved`, …) and trust level |
-| **output generated** | the final answer as released to the user |
-| **task end** | the evaluated outcome (`task_success`, `task_failure`, `blocked`, `max_steps`, `error`) |
-
-Chips show the step, resource, source, trust, latency, tokens and, when a security layer
-is attached, the `decision` (ALLOW / BLOCK / REVIEW). Blocked events have a red edge. The status line
-on top shows the label, model, defence, status, **task success** and **attack success**. The
-final answer appears below the timeline.
-
-### Past runs / Summary (tabs)
-
-* **Past runs**: the latest 200 runs. Click one to replay its timeline.
-* **Summary**: the SRS Ch. 13 metrics per model × defence × label × category (next section).
+  The status line shows label, model, defence, status, **task success** and **attack success**.
+* **Past runs** lists task runs (click one to replay it). **Metrics** shows the SRS Ch. 13
+  metrics per model, defence, label and category (section 4).
 
 ## 3. Command line
 

@@ -180,3 +180,40 @@ async def test_api_run_follow_up_and_export(ws):
         assert csv_text.startswith("event_id,timestamp,task_id")
         assert (await client.post("/api/review-mode", json={"behaviour": "human"})).json()["review_behaviour"] == "human"
         assert (await client.post("/api/reviews/rev-missing", json={"approve": True})).status_code == 404
+
+
+# ---- chat screen support --------------------------------------------------------------------
+async def test_chat_sessions_memory_and_interrupted_runs(ws):
+    from aiworkspace import api
+
+    api.ws = ws
+    api.reviews = ReviewQueue(ws.telemetry, timeout_s=5)
+    # a chat that saves a note, then a NEW chat that keeps long-term memory but gets a clean sandbox
+    first = await ws.run(task_id=None, prompt="Remember this preference for future conversations: my summaries should always be exactly three bullet points.",
+                         model="test/scripted", keep_memory=True)
+    second = await ws.run(prompt="Hello again", model="test/scripted", keep_memory=True)
+    assert first["session_id"] != second["session_id"]
+
+    transport = httpx.ASGITransport(app=api.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        sessions = (await client.get("/api/sessions")).json()
+        assert [s["session_id"] for s in sessions][:2] == [second["session_id"], first["session_id"]]
+        detail = (await client.get(f"/api/sessions/{first['session_id']}?events=true")).json()
+        assert detail["runs"][0]["events"][0]["event_type"] == "task_start"
+        assert (await client.delete("/api/memory")).json() == {"cleared": True}
+        assert (await client.get("/api/memory")).json() == []
+
+    # a run left "running" by a stopped server is closed on the next start
+    ws.telemetry.start_run(run_id="run-orphan", task_id="manual", label="manual", category="manual",
+                           model="m", status="running")
+    assert ws.telemetry.mark_interrupted() == 1
+    assert ws.telemetry.get_run("run-orphan")["status"] == "interrupted"
+
+
+async def test_keep_memory_survives_a_new_chat(ws):
+    first = await ws.run(task_id="remember_deadline", model="test/scripted")
+    assert len(ws.memory.all()) == 1
+    await ws.run(prompt="New chat", model="test/scripted", keep_memory=True)
+    assert len(ws.memory.all()) == 1, "a new chat keeps long-term memory"
+    await ws.run(task_id="growth_calculation", model="test/scripted")
+    assert ws.memory.all() == [], "task runs still start from empty memory"
